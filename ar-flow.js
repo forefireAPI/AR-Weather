@@ -307,6 +307,7 @@ AFRAME.registerComponent('flow-tracer', {
         resolution : {type: 'number', default: 1200 },
         sim_speedup: {type: 'number', default: 3600 },
         integration_step : {type: 'number', default: 1000 },
+        target_advect_per_s : {type: 'number', default: 30 },
         trail_length: {type: 'number', default: 100}
     },
     
@@ -342,9 +343,12 @@ AFRAME.registerComponent('flow-tracer', {
             this.pointsGeometry = new THREE.BufferGeometry();
             this.trail_length = this.data.trail_length;
             this.time_step = this.data.time_step;
-                
+            this.cMaxAps =   1000.0/this.data.target_advect_per_s;
+            
             this.sim_speedup = this.data.sim_speedup;
-                
+            
+            this.currentAdvDuration = 0;
+        
             this.resolution  = this.data.resolution;
             this.integration_step  = this.data.integration_step;
             this.number_of_particles = this.data.number_of_particles;
@@ -491,8 +495,8 @@ AFRAME.registerComponent('flow-tracer', {
         newSTR += "\ndx: "+this.resolution;
         newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
         newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
-        newSTR += "\nTtime "+(this.tickTime).toFixed(2);
-        newSTR += "\nIs "+(this.integration_step).toFixed(2);
+        newSTR += "\nTtime "+(this.currentAdvDuration).toFixed(2);
+        newSTR += "\nIs "+(this.cMaxAps).toFixed(2);
         return newSTR;
     },
     
@@ -537,9 +541,27 @@ AFRAME.registerComponent('flow-tracer', {
     
     tick: function(time, timeDelta) {
         if (!this.isStopped){
+            
+
+            
+            
             this.tickTimeDelta = timeDelta;
             this.tickTime = time;
             this.time_step = this.sim_speedup*timeDelta;
+            
+            this.currentAdvDuration += +timeDelta;
+            
+            if (this.text_tracker != null){
+                this.text_tracker.update_text(getDateTimeString(this.current_time));
+                this.text_tracker.set_progress(rTime/this.timeIndices.length);
+                this.update_info(this.getSimulationInfo());
+            } 
+            
+            if (this.currentAdvDuration < this.cMaxAps){
+                return;
+            }
+            this.currentAdvDuration = 0;
+            
             
             this.current_time = +this.current_time+ +this.time_step;
             if(this.current_time > this.end_time){
@@ -557,14 +579,10 @@ AFRAME.registerComponent('flow-tracer', {
             // Calculate rIndices as the fractional part of rTime
             this.rIndices = 1-(rTime % 1);
         
-            if (this.text_tracker != null){
-                this.text_tracker.update_text(getDateTimeString(this.current_time));
-                this.text_tracker.set_progress(rTime/this.timeIndices.length);
-                this.update_info(this.getSimulationInfo());
-            }else{
-              //  console.log("No tracker");
-            }
-                
+
+            
+
+            
             //for (var itrail = 0; itrail < this.trail_length; itrail += 1) 
             
             this.trail_index = this.trail_index+1;
