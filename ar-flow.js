@@ -266,8 +266,7 @@ AFRAME.registerComponent('shoot-controls', {
     // Iterate through intersected entities
     for (var i = 0; i < raycasterEl.intersectedEls.length; i++) {
       var intersectedEl = raycasterEl.intersectedEls[i];
-
-          console.log("Intersection el:", intersectedEl);
+ 
       // Check if the intersected entity is the flow_map
       if (intersectedEl.id === 'flow_map_caster') {
         // Get the intersection detail
@@ -276,8 +275,8 @@ AFRAME.registerComponent('shoot-controls', {
         if (intersectionDetail) {
           // Intersection point with the flow_map
           var intersectionPoint = intersectionDetail.point;
-          console.log("Intersection point:", intersectionPoint);
-
+         
+          this.flow_tracer.injectParticleXY(intersectionPoint);
           // Handle your specific logic here
           // ...
         }
@@ -303,7 +302,6 @@ AFRAME.registerComponent('flow-tracer', {
     
     schema: {
         number_of_particles: {type: 'number', default: 15000},
-        time_step: {type: 'number', default: 190800 },
         resolution : {type: 'number', default: 1200 },
         sim_speedup: {type: 'number', default: 3600 },
         integration_step : {type: 'number', default: 1000 },
@@ -342,11 +340,13 @@ AFRAME.registerComponent('flow-tracer', {
 
             this.pointsGeometry = new THREE.BufferGeometry();
             this.trail_length = this.data.trail_length;
-            this.time_step = this.data.time_step;
+     
             this.cMaxAps =   1000.0/this.data.target_advect_per_s;
             
             this.sim_speedup = this.data.sim_speedup;
-            
+        
+            this.time_step = this.sim_speedup*this.cMaxAps;
+        
             this.currentAdvDuration = 0;
         
             this.resolution  = this.data.resolution;
@@ -361,33 +361,37 @@ AFRAME.registerComponent('flow-tracer', {
             
             this.rIndices = 1;
             console.log(this.initial_time+" Data Loaded "+this.timeIndex2);
-            
-
-        
+            this.shootOK = true;
+            this.lastShootOK = 0;
             this.trail_index = 0;
-            this.positions = new Float32Array(this.number_of_particles * 4); // 3 vertices per point
+
+            this.positions = new Float32Array(this.number_of_particles * 4); // 4 vertices per point
+            this.ages = new Float32Array(this.number_of_particles); // next update time
             this.trail = new Float32Array(this.number_of_particles * 4 * this.trail_length); // 3 vertices per point
             this.trailvalues = new Float32Array(this.number_of_particles * 1 * this.trail_length); // 3 vertices per point
-            var origin = this.data2D.origin;
-            var extents = this.data2D.extents;
+            this.origin = this.data2D.origin;
+            this.extents = this.data2D.extents;
         
         
             var maxOverallSpeed = Math.max(
-                Math.sqrt(Math.pow(extents.U[0], 2) + Math.pow(extents.V[0], 2)),
-                Math.sqrt(Math.pow(extents.U[0], 2) + Math.pow(extents.V[1], 2)),
-                Math.sqrt(Math.pow(extents.U[1], 2) + Math.pow(extents.V[0], 2)),
-                Math.sqrt(Math.pow(extents.U[1], 2) + Math.pow(extents.V[1], 2))
+                Math.sqrt(Math.pow(this.extents.U[0], 2) + Math.pow(this.extents.V[0], 2)),
+                Math.sqrt(Math.pow(this.extents.U[0], 2) + Math.pow(this.extents.V[1], 2)),
+                Math.sqrt(Math.pow(this.extents.U[1], 2) + Math.pow(this.extents.V[0], 2)),
+                Math.sqrt(Math.pow(this.extents.U[1], 2) + Math.pow(this.extents.V[1], 2))
             );
             console.log("MaxR is ",maxOverallSpeed);
             this.cflcondition = this.resolution/maxOverallSpeed;
             
             for (var i = 0; i < this.number_of_particles * 4; i += 4) {
-                this.positions[i] = origin.x + Math.random() * extents.width;
-                this.positions[i + 2] = origin.y + Math.random() * extents.height;
+                this.positions[i] = this.origin.x + Math.random() * this.extents.width;
+                this.positions[i + 2] = this.origin.y + Math.random() * this.extents.height;
 
                 rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+1],this.timeIndex1,this.timeIndex2,this.rIndices);
                 this.positions[i + 1] = rloc.z;
-                this.positions[i + 3] = rloc.u;
+                this.positions[i + 3] = 9999;
+            }
+            for (var i = 0; i < this.number_of_particles ; i += 1) {
+                this.ages[i] =  Math.random() * +this.trail_length;
             }
             for (var itrail = 0; itrail < this.trail_length; itrail += 1) {
                 var start_pi = itrail*this.number_of_particles * 4;
@@ -395,7 +399,7 @@ AFRAME.registerComponent('flow-tracer', {
                         this.trail[start_pi+i] = this.positions[i];
                         this.trail[start_pi+i + 1] = this.positions[i+1];
                         this.trail[start_pi+i + 2] = this.positions[i+2];
-                        this.trail[start_pi+i + 3] = this.positions[i+3];
+                        this.trail[start_pi+i + 3] = 1.0;//this.positions[i+3];
                         this.trailvalues[start_pi/4+i/4] = this.positions[i+3];
                     }
             }
@@ -409,7 +413,8 @@ AFRAME.registerComponent('flow-tracer', {
                     minClampValue: { value: 0.0 }, // Define min clamp value
                     maxClampValue: { value: 100. }  // Define max clamp value
                 },
-                vertexShader: `
+                vertexShader: 
+                `
                     attribute float colorIndex;
                     uniform float size;
                     varying float vColorIndex;
@@ -448,11 +453,13 @@ AFRAME.registerComponent('flow-tracer', {
                             }
                         }
                         float colormap_alpha(float x) {
-                            if (x < 120.0) {
+                             if (x < 120.0) {
                                 return 51.0 + 1.709 * x;
                             } else {
                                 return 255.0;
                             }
+                           
+                            
                         }
 
                         vec4 colormap(float x) {
@@ -461,14 +468,12 @@ AFRAME.registerComponent('flow-tracer', {
                             float g = clamp(colormap_green(t) / 255.0, 0.0, 1.0);
                             float b = clamp(colormap_blue(t) / 255.0, 0.0, 1.0);
                             float a = clamp(colormap_alpha(t) / 255.0, 0.0, 1.0);
-                            return vec4(r, g, b, a);
+                            return vec4(r, g, b, 1.0);
                         }
                         void main() { 
-                            float opacity = 1.0; 
+
                             float indexFactor = clamp(vColorIndex, minClampValue, maxClampValue);
-                            vec4 colorWithAlpha = colormap(indexFactor); // Now expects a vec4
-                            opacity = colorWithAlpha.a;
-                            gl_FragColor = vec4(colorWithAlpha.rgb, opacity); // Combines rgb with opacity
+                            gl_FragColor = colormap(indexFactor); // Combines rgb with opacity
                         }
                 `,
                 depthTest: true,
@@ -481,7 +486,65 @@ AFRAME.registerComponent('flow-tracer', {
             pointsMaterial.uniforms.maxClampValue.value = maxOverallSpeed;
             this.points = new THREE.Points(this.pointsGeometry, pointsMaterial);
             this.el.setObject3D('points', this.points);
+        
+        
+        
+        
+            this.number_of_inject = 1000;
+            this.injected = new Float32Array(this.number_of_inject * 4); // 4 vertices per point
+            for (var i = 0; i < this.number_of_inject * 4; i += 4) {
+                this.injected[i] = this.origin.x ;
+                this.injected[i + 2] = this.origin.y ;
+                rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+1],this.timeIndex1,this.timeIndex2,this.rIndices);
+                this.injected[i + 1] = rloc.z+1;
+                this.injected[i + 3] = 1;
+            }
+        
+        this.injectCount = 0;
+        
+            var injectMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    size: { value: 5.0 },
+                    color: { value: new THREE.Color(1.0, 0.2, 0.2) } // Uniform for color
+                },
+                vertexShader: 
+                `   uniform float size;
+                    varying vec3 vPosition;
+                    void main() {
+                        vPosition = position;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: 
+                `   uniform vec3 color;
+                    varying vec3 vPosition;
+                    void main() {
+                        // Distance from the center of the point
+                        vec2 circCoord = 2.0 * gl_PointCoord - 1.0;
+                        if (dot(circCoord, circCoord) > 1.0) {
+                            // If the point is outside the circle, discard it
+                            discard;
+                        }
+                        gl_FragColor = vec4(color, 1.0); // Use uniform color
+                    }
+                `,
+                depthTest: true,
+                transparent: true
+            });
+            
+        
+        
+            this.injectGeometry = new THREE.BufferGeometry();
+            this.injectGeometry.setAttribute('position', new THREE.BufferAttribute(this.injected, 4));
+            this.injectPoints = new THREE.Points(this.injectGeometry, injectMaterial);
+        this.injectPoints.frustumCulled = false;
+            this.el.setObject3D('injections', this.injectPoints);
+        
            this.isStopped = false;
+      
+        
        })
         .catch(error => console.error('Erreur lors du chargement du fichier JSON:', error));
      
@@ -502,7 +565,31 @@ AFRAME.registerComponent('flow-tracer', {
     
     injectParticleIJ: function(i,j) { 
     },
-    injectParticleXY: function(x,y) { 
+    injectParticleXY: function(intersectionPoint) { 
+       //  console.log("Intersection point:", intersectionPoint, this.origin, this.extents);
+        if (!this.shootOK){
+            return;
+        }
+        if (this.injectCount >= this.number_of_inject){
+            return;
+        }
+        var NX = intersectionPoint.x  ;
+        var NY = intersectionPoint.z ;
+        if (NX < this.origin.x || NX > this.origin.x + this.extents.width ||
+                NY < this.origin.y || NY > this.origin.y + this.extents.height) {
+             return;
+        }       
+        
+        rloc = interpolateAt(this.data2D, NX, NY,this.timeIndex1,this.timeIndex2,this.rIndices);  
+        this.injected[this.injectCount*4] = NX;
+        this.injected[this.injectCount*4 + 2] = NY;
+        this.injected[this.injectCount*4 + 1] = rloc.z;
+        this.injected[this.injectCount*4 + 3] = 1;
+                 
+        console.log("Injection at :", intersectionPoint, this.injected[this.injectCount*4], this.injected[this.injectCount*4 + 2]);
+      
+        this.injectCount += 1;
+        this.shootOK = false;
     },
     injectParticleLatLon: function(lat,lon) { 
     },
@@ -526,11 +613,11 @@ AFRAME.registerComponent('flow-tracer', {
     },
     // Play/Pause toggle function
     speedUp: function() {
-        this.sim_speedup += +Math.abs(this.sim_speedup)/10.0+3600.0;
+        this.sim_speedup += +3600.0;
         console.log(this.time_step );
     },
     speedDown: function() {
-        this.sim_speedup -= +Math.abs(this.sim_speedup)/10.0+3600.0;
+        this.sim_speedup -= +3600.0;
         console.log(this.time_step );
     },
     // Function to change the date/time
@@ -542,25 +629,20 @@ AFRAME.registerComponent('flow-tracer', {
     tick: function(time, timeDelta) {
         if (!this.isStopped){
             
-
-            
-            
-            this.tickTimeDelta = timeDelta;
-            this.tickTime = time;
-            this.time_step = this.sim_speedup*timeDelta;
-            
             this.currentAdvDuration += +timeDelta;
-            
-            if (this.text_tracker != null){
-                this.text_tracker.update_text(getDateTimeString(this.current_time));
-                this.text_tracker.set_progress(rTime/this.timeIndices.length);
-                this.update_info(this.getSimulationInfo());
-            } 
-            
             if (this.currentAdvDuration < this.cMaxAps){
                 return;
             }
             this.currentAdvDuration = 0;
+            
+            this.shootOK = true;
+            
+            
+            this.tickTimeDelta = timeDelta;
+            this.tickTime = time;
+            this.time_step = this.sim_speedup*this.cMaxAps;
+            
+        
             
             
             this.current_time = +this.current_time+ +this.time_step;
@@ -579,7 +661,13 @@ AFRAME.registerComponent('flow-tracer', {
             // Calculate rIndices as the fractional part of rTime
             this.rIndices = 1-(rTime % 1);
         
-
+            
+            if (this.text_tracker != null){
+                this.text_tracker.update_text(getDateTimeString(this.current_time));
+                this.text_tracker.set_progress(rTime/this.timeIndices.length);
+                this.update_info(this.getSimulationInfo());
+            } 
+            
             
 
             
@@ -589,42 +677,74 @@ AFRAME.registerComponent('flow-tracer', {
             if(this.trail_index >=this.trail_length){
                 this.trail_index = 0; 
             }
-            var origin = this.data2D.origin;
-            var extents = this.data2D.extents;
-            // Move the particle 
-            for (var i = 0; i < this.number_of_particles * 4; i += 4) {
-                rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
-                
-                this.positions[i] += (rloc.u * timeDelta *20)/this.resolution;
-                this.positions[i + 2] += (rloc.v * timeDelta *20)/this.resolution;
 
-
-                if ((this.trail_index === 0 )|| (Math.random()>0.9)) {
-                    //console.log(timeDelta)
+            
+            
+             for (var i = 0; i < this.injectCount * 4; i += 4) {
+                rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
+                var NX = this.injected[i] + (rloc.u * +this.time_step/1000 )/this.resolution;
+                this.injected[i + 1] = rloc.z;
+                var NY = this.injected[i + 2] + (rloc.v * +this.time_step/1000)/this.resolution;
+                this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
+                 
+                if (this.injected[i] < this.origin.x || this.injected[i] > this.origin.x + this.extents.width ||
+                        this.injected[i + 2] < this.origin.y || this.injected[i + 2] > this.origin.y + this.extents.height) {
+                        this.injected[i] = this.origin.x + Math.random() * this.extents.width;
+                        this.injected[i + 2] = this.origin.y + Math.random() * this.extents.height;
+                 }else{
+                     this.injected[i] = NX;
+                     this.injected[i + 2] = NY;
+                 }
+                 
+                /* while (this.positions[i + 3] < Math.random()*0.1 ) {
                     this.positions[i] = origin.x + Math.random() * extents.width;
                     this.positions[i + 2] = origin.y + Math.random() * extents.height;
+                    rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
+                    this.positions[i + 1] = rloc.z;
+                    this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
+                }*/
+                 
                 }
-                if (this.positions[i] < origin.x || this.positions[i] > origin.x + extents.width ||
-                        this.positions[i + 2] < origin.y || this.positions[i + 2] > origin.y + extents.height) {
+            
+            
+            
+            
+            
+            for (var i = 0; i < this.number_of_particles * 4; i += 4) {
+               
+                rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
+                
+                this.positions[i] += (rloc.u * this.cMaxAps* 60 )/this.resolution;
+                this.positions[i + 2] += (rloc.v * this.cMaxAps * 60 )/this.resolution;
+
+
+                /*if (this.trail_index == 0 ) {
+                    this.positions[i] = origin.x + Math.random() * extents.width;
+                    this.positions[i + 2] = origin.y + Math.random() * extents.height;
+                }*/
+                if (this.positions[i] < this.origin.x || this.positions[i] > this.origin.x + this.extents.width ||
+                        this.positions[i + 2] < this.origin.y || this.positions[i + 2] > this.origin.y + this.extents.height) {
 
                         // Reset position within the bounds
-                        this.positions[i] = origin.x + Math.random() * extents.width;
-                        this.positions[i + 2] = origin.y + Math.random() * extents.height;
+                        this.positions[i] = this.origin.x + Math.random() * this.extents.width;
+                        this.positions[i + 2] = this.origin.y + Math.random() * this.extents.height;
                  }
 
 
                 rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
-                
-                while ((Math.abs(rloc.v)+Math.abs(rloc.u) < 0.01 )) {
-                    //console.log(timeDelta)
-                    this.positions[i] = origin.x + Math.random() * extents.width;
-                    this.positions[i + 2] = origin.y + Math.random() * extents.height;
-                    rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
-                }
-                
-
                 this.positions[i + 1] = rloc.z;
                 this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
+                while (this.positions[i + 3] < Math.random()*0.1 ) {
+                    this.positions[i] = this.origin.x + Math.random() * this.extents.width;
+                    this.positions[i + 2] = this.origin.y + Math.random() * this.extents.height;
+                    rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
+                    this.positions[i + 1] = rloc.z;
+                    this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
+                }
+            
+                
+
+
             }
 
             // handle the trail (update oldest position with newest)
@@ -638,8 +758,15 @@ AFRAME.registerComponent('flow-tracer', {
             var start_piv = this.trail_index*this.number_of_particles;
             for (var i = 0; i < this.number_of_particles ; i += 1) {
                 this.trailvalues[start_piv+i] = this.trail[start_pi+i*4+3];
+                this.ages[i] += 1;
+                if (this.ages[i] >  +this.trail_length ) {
+                    this.positions[i*4] = this.origin.x + Math.random() * this.extents.width;
+                    this.positions[i*4 + 2] = this.origin.y + Math.random() * this.extents.height;
+                    this.ages[i] = 0;
+                }
             }
             // Update the geometry
+            this.injectGeometry.attributes.position.needsUpdate = true;
             this.pointsGeometry.attributes.position.needsUpdate = true;
             this.pointsGeometry.attributes.colorIndex.needsUpdate = true;
         }

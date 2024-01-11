@@ -62,7 +62,7 @@
   <body> 
       <a-scene id="flowview" arjs='sourceType: webcam; debugUIEnabled: false;'>      <!-- renderer="antialias: true"--->
 
-    <a-entity id="surface-current" flow-tracer="number_of_particles: 10000; time_step: 10000 ; trail_length: 50" position="0 0 0"></a-entity>
+    <a-entity id="surface-current" flow-tracer="number_of_particles: 5000; time_step: 10000 ; trail_length: 20" position="0 0 0"></a-entity>
      <a-entity points-sphere position="0 0 0" scale ="1 1 1"></a-entity>
           <a-entity movement-controls="fly: true; speed: 10" position="0 100 140">
               <a-entity camera position="0 0 0" rotation="-45 0 0" >
@@ -92,8 +92,8 @@
       ></a-entity>
        <a-entity id="flow_map_caster" class="raycastable"
             geometry="primitive: plane; width: 1101; height: 463"
-            material="color: blue; side: double"
-            position="0 -3 0"
+            material="color: blue; side: double; transparent: true; opacity: 0.0"
+            position="0 15.6 0"
             rotation="-90 0 0">
   </a-entity>
     </a-scene>
