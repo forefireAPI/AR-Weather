@@ -126,8 +126,8 @@ AFRAME.registerComponent('text-info', {
 
     this.textInfo = document.createElement('a-text');
     this.textInfo.setAttribute('value', "Info");
-    this.textInfo.setAttribute('color', 'pink');
-    this.textInfo.setAttribute('position', '-0.5 0 0.01'); // Slightly in front of the parent entity
+    this.textInfo.setAttribute('color', 'green');
+    this.textInfo.setAttribute('position', '0 -0.1 0.1'); // Slightly in front of the parent entity
     this.textInfo.setAttribute('scale', '1 1 1'); // Slightly in front of the parent entity
     this.el.appendChild(this.textInfo);
       
@@ -136,7 +136,7 @@ AFRAME.registerComponent('text-info', {
     plane.setAttribute('position', '4 -0.5 0'); // Below the text
     plane.setAttribute('width', '8'); // Assuming full width
     plane.setAttribute('height', '0.3'); // 10% of the height
-    plane.setAttribute('color', '#FFFFFF');
+    plane.setAttribute('color', '#44FF44');
     plane.setAttribute('material', 'opacity: 0.5');
     this.el.appendChild(plane);
 
@@ -288,7 +288,7 @@ AFRAME.registerComponent('shoot-controls', {
 
         this.flow_tracer = tcomp;
         
-        this.flow_tracer.update_info("Press A or B");
+        this.flow_tracer.update_info("Waiting initialisation");
     },
 
   update: function () {
@@ -504,7 +504,7 @@ AFRAME.registerComponent('flow-tracer', {
         
             var injectMaterial = new THREE.ShaderMaterial({
                 uniforms: {
-                    size: { value: 5.0 },
+                    size: { value: 8.0 },
                     color: { value: new THREE.Color(1.0, 0.2, 0.2) } // Uniform for color
                 },
                 vertexShader: 
@@ -553,13 +553,14 @@ AFRAME.registerComponent('flow-tracer', {
     
     getSimulationInfo: function() {
         var newSTR  = getDateTimeString(this.current_time);
-        newSTR += "\nDt: "+(this.time_step).toFixed(2);
-        newSTR += "\nSpeedup: "+(this.sim_speedup).toFixed(2);
-        newSTR += "\ndx: "+this.resolution;
-        newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
-        newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
-        newSTR += "\nTtime "+(this.currentAdvDuration).toFixed(2);
-        newSTR += "\nIs "+(this.cMaxAps).toFixed(2);
+    //    newSTR += "\nDt: "+(this.time_step).toFixed(2);
+        newSTR += " speedup: "+(this.sim_speedup).toFixed(0);
+        newSTR += "  Injected: "+ this.injectCount;
+     //   newSTR += "\ndx: "+this.resolution;
+    //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
+    //    newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
+    //    newSTR += "\nTtime "+(this.currentAdvDuration).toFixed(2);
+    //    newSTR += "\nIs "+(this.cMaxAps).toFixed(2);
         return newSTR;
     },
     
@@ -589,7 +590,7 @@ AFRAME.registerComponent('flow-tracer', {
         console.log("Injection at :", intersectionPoint, this.injected[this.injectCount*4], this.injected[this.injectCount*4 + 2]);
       
         this.injectCount += 1;
-        this.shootOK = false;
+        this.shootOK = true;
     },
     injectParticleLatLon: function(lat,lon) { 
     },
@@ -682,27 +683,21 @@ AFRAME.registerComponent('flow-tracer', {
             
              for (var i = 0; i < this.injectCount * 4; i += 4) {
                 rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
-                var NX = this.injected[i] + (rloc.u * +this.time_step/1000 )/this.resolution;
+                var NX = this.injected[i] + (rloc.u * +this.time_step/1000.0 )/this.resolution;
                 this.injected[i + 1] = rloc.z;
-                var NY = this.injected[i + 2] + (rloc.v * +this.time_step/1000)/this.resolution;
+                var NY = this.injected[i + 2] + (rloc.v * +this.time_step/1000.0 )/this.resolution;
                 this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
-                 
+                
                 if (this.injected[i] < this.origin.x || this.injected[i] > this.origin.x + this.extents.width ||
                         this.injected[i + 2] < this.origin.y || this.injected[i + 2] > this.origin.y + this.extents.height) {
-                        this.injected[i] = this.origin.x + Math.random() * this.extents.width;
-                        this.injected[i + 2] = this.origin.y + Math.random() * this.extents.height;
+                   //     this.injected[i] = this.origin.x + Math.random() * this.extents.width;
+                        this.injected[i + 3] = 2;
                  }else{
-                     this.injected[i] = NX;
-                     this.injected[i + 2] = NY;
+                     if (this.positions[i + 3]>0){
+                        this.injected[i] = NX;
+                        this.injected[i + 2] = NY;
+                     }
                  }
-                 
-                /* while (this.positions[i + 3] < Math.random()*0.1 ) {
-                    this.positions[i] = origin.x + Math.random() * extents.width;
-                    this.positions[i + 2] = origin.y + Math.random() * extents.height;
-                    rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
-                    this.positions[i + 1] = rloc.z;
-                    this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
-                }*/
                  
                 }
             

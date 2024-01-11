@@ -64,8 +64,8 @@
 
     <a-entity id="surface-current" flow-tracer="number_of_particles: 5000; time_step: 10000 ; trail_length: 20" position="0 0 0"></a-entity>
      <a-entity points-sphere position="0 0 0" scale ="1 1 1"></a-entity>
-          <a-entity movement-controls="fly: true; speed: 10" position="0 100 140">
-              <a-entity camera position="0 0 0" rotation="-45 0 0" >
+          <a-entity movement-controls="fly: true; speed: 10" position="0 440 140">
+              <a-entity camera position="0 0 0" rotation="-75 0 0" >
               </a-entity>
               
                   <a-cursor id="handControl" laser-controls="hand: right" shoot-controls
@@ -73,7 +73,7 @@
               material="color: black; shader: flat">
     </a-cursor>
               
-       <a-entity id="timeLabel" text-info="defaultText: YYYY" color="black" position="-4 -3 -5" scale="1 1 1" rotation="-45 0 0"></a-entity>
+       <a-entity id="timeLabel" text-info="defaultText: Not loaded" color="black" position="-4 -4 -5" scale="1 1 1" rotation="-45 0 0"></a-entity>
           
               
         </a-entity>
@@ -81,7 +81,7 @@
 
 
       <a-entity
-        terrain-model="map: url(marsW.jpg);
+        terrain-model="map: url(marsN.jpg);
           dem: url(elevation.bin);
           planeWidth: 1101;
           planeHeight: 463;
