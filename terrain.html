@@ -57,13 +57,14 @@
      });
   });
 
+    
 </script>
   </head>
   <body> 
       <a-scene id="flowview" arjs='sourceType: webcam; debugUIEnabled: false;'>      <!-- renderer="antialias: true"--->
 
-    <a-entity id="surface-current" flow-tracer="number_of_particles: 5000; time_step: 10000 ; trail_length: 20" position="0 0 0"></a-entity>
-     <a-entity points-sphere position="0 0 0" scale ="1 1 1"></a-entity>
+    <a-entity id="surface-current" flow-tracer="file: timed.zip; number_of_particles: 5000; time_step: 10000 ; trail_length: 20" position="0 0 0"></a-entity>
+  
           <a-entity movement-controls="fly: true; speed: 10" position="0 440 140">
               <a-entity camera position="0 0 0" rotation="-75 0 0" >
               </a-entity>
@@ -83,8 +84,8 @@
       <a-entity
         terrain-model="map: url(marsN.jpg);
           dem: url(elevation.bin);
-          planeWidth: 1101;
-          planeHeight: 463;
+          planeWidth: 11.01;
+          planeHeight: 4.63;
           segmentsWidth: 1100;
           segmentsHeight: 462;
           zPosition: 300;

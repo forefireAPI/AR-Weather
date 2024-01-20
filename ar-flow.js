@@ -130,7 +130,14 @@ AFRAME.registerComponent('text-info', {
     this.textInfo.setAttribute('position', '0 -0.1 0.1'); // Slightly in front of the parent entity
     this.textInfo.setAttribute('scale', '1 1 1'); // Slightly in front of the parent entity
     this.el.appendChild(this.textInfo);
-      
+    
+    var bgplane = document.createElement('a-plane');
+    bgplane.setAttribute('position', '4 -0.25 -0.3'); // Below the text
+    bgplane.setAttribute('width', '9'); // Assuming full width
+    bgplane.setAttribute('height', '0.8'); // 10% of the height
+    bgplane.setAttribute('color', '#AAAAAA');
+    bgplane.setAttribute('material', 'opacity: 0.8');
+    this.el.appendChild(bgplane);
     // Create the white plane
     var plane = document.createElement('a-plane');
     plane.setAttribute('position', '4 -0.5 0'); // Below the text
@@ -342,10 +349,13 @@ AFRAME.registerComponent('flow-tracer', {
             this.trail_length = this.data.trail_length;
      
             this.cMaxAps =   1000.0/this.data.target_advect_per_s;
-            
-            this.sim_speedup = this.data.sim_speedup;
+            this.speedups_values = [-3600*24*7,-3600*24*2,-3600*24,-3600*3,-3600, -60, 0, 60, 3600, 3600*3, 3600*24,3600*48,3600*24*7];
+            this.speedups_text = ["a week back","2 days back","a day back","3 hours back","an hour back", "a minute back", "nothing", "a minute", "an hour", "3 hours", "a day","2 days","a week"];
+            this.speedup_index = 6;
         
-            this.time_step = this.sim_speedup*this.cMaxAps;
+            this.sim_speedup = this.speedups_values[this.speedup_index];
+        
+            this.time_step_ms = this.sim_speedup*this.cMaxAps;
         
             this.currentAdvDuration = 0;
         
@@ -553,9 +563,9 @@ AFRAME.registerComponent('flow-tracer', {
     
     getSimulationInfo: function() {
         var newSTR  = getDateTimeString(this.current_time);
-    //    newSTR += "\nDt: "+(this.time_step).toFixed(2);
-        newSTR += " speedup: "+(this.sim_speedup).toFixed(0);
-        newSTR += "  Injected: "+ this.injectCount;
+    //    newSTR += "\nDt: "+(this.time_step_ms).toFixed(2);
+        newSTR += "     -   one second is "+this.speedups_text[this.speedup_index];
+        newSTR += "\nTracers in flow: "+ this.injectCount;
      //   newSTR += "\ndx: "+this.resolution;
     //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
     //    newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
@@ -614,12 +624,17 @@ AFRAME.registerComponent('flow-tracer', {
     },
     // Play/Pause toggle function
     speedUp: function() {
-        this.sim_speedup += +3600.0;
-        console.log(this.time_step );
+        
+        if (this.speedup_index < this.speedups_values.length-1){
+            this.speedup_index = this.speedup_index+1;
+        }
+        this.sim_speedup = this.speedups_values[this.speedup_index]; 
     },
     speedDown: function() {
-        this.sim_speedup -= +3600.0;
-        console.log(this.time_step );
+        if ( this.speedup_index > 0){
+            this.speedup_index = this.speedup_index-1;
+        }
+        this.sim_speedup = this.speedups_values[this.speedup_index]; 
     },
     // Function to change the date/time
     changeDate: function(newTime) {
@@ -641,12 +656,12 @@ AFRAME.registerComponent('flow-tracer', {
             
             this.tickTimeDelta = timeDelta;
             this.tickTime = time;
-            this.time_step = this.sim_speedup*this.cMaxAps;
+            this.time_step_ms = this.sim_speedup*this.cMaxAps;
             
         
             
             
-            this.current_time = +this.current_time+ +this.time_step;
+            this.current_time = +this.current_time+ +this.time_step_ms;
             if(this.current_time > this.end_time){
                 this.current_time = this.initial_time;
             }
@@ -683,9 +698,9 @@ AFRAME.registerComponent('flow-tracer', {
             
              for (var i = 0; i < this.injectCount * 4; i += 4) {
                 rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
-                var NX = this.injected[i] + (rloc.u * +this.time_step/1000.0 )/this.resolution;
+                var NX = this.injected[i] + (rloc.u * +this.time_step_ms/1000.0 )/this.resolution;
                 this.injected[i + 1] = rloc.z;
-                var NY = this.injected[i + 2] + (rloc.v * +this.time_step/1000.0 )/this.resolution;
+                var NY = this.injected[i + 2] + (rloc.v * +this.time_step_ms/1000.0 )/this.resolution;
                 this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
                 
                 if (this.injected[i] < this.origin.x || this.injected[i] > this.origin.x + this.extents.width ||
