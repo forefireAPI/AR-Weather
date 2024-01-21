@@ -39,14 +39,20 @@ function interpolateAt(s_field, x, y,timeIndex1, timeIndex2, rIndices) {
     const iy2 = Math.min(iy1 + 1, altitude[0].length - 1);
     const fracX = fx - ix1;
     const fracY = fy - iy1;
-
+    
+    if (ix1 < 0 || ix1 > altitude.length - 1 ||
+        ix2 < 0 || ix2 > altitude.length - 1 ||
+        iy1 < 0 || iy1 > altitude[0].length - 1 ||
+        iy2 < 0 || iy2 > altitude[0].length - 1) {
+        return { z: 0, y: 0, x: 0 };
+    }
     // Inline bilinear interpolation
     const interpolate = (matrix) => 
         (1 - fracX) * ((1 - fracY) * matrix[ix1][iy1] + fracY * matrix[ix1][iy2]) +
         fracX * ((1 - fracY) * matrix[ix2][iy1] + fracY * matrix[ix2][iy2]);
 
     return {
-        z: interpolate(altitude),
+        z: 0.27,//interpolate(altitude),
         u: interpolate(U1)*rIndices+interpolate(U2)*(1-rIndices),
         v: interpolate(V1)*rIndices+interpolate(V2)*(1-rIndices)
     };
@@ -311,9 +317,10 @@ AFRAME.registerComponent('flow-tracer', {
         number_of_particles: {type: 'number', default: 15000},
         resolution : {type: 'number', default: 1200 },
         sim_speedup: {type: 'number', default: 3600 },
-        integration_step : {type: 'number', default: 1000 },
+        integration_step : {type: 'number', default: 10 },
         target_advect_per_s : {type: 'number', default: 30 },
-        trail_length: {type: 'number', default: 100}
+        trail_length: {type: 'number', default: 100},
+        datafile: {type: 'string', default: "none"}
     },
     
     
@@ -323,7 +330,7 @@ AFRAME.registerComponent('flow-tracer', {
     this.text_tracker = null;
     this.hand_control = null;
         
-    fetch("timed.zip")
+    fetch(this.data.datafile)
         .then(response => {
             if (!response.ok) {
                 throw new Error('Réseau ou réponse non valide.');
@@ -419,7 +426,7 @@ AFRAME.registerComponent('flow-tracer', {
 
             var pointsMaterial = new THREE.ShaderMaterial({
                 uniforms: {
-                    size: { value: 3.},
+                    size: { value: 3},
                     minClampValue: { value: 0.0 }, // Define min clamp value
                     maxClampValue: { value: 100. }  // Define max clamp value
                 },
@@ -500,7 +507,7 @@ AFRAME.registerComponent('flow-tracer', {
         
         
         
-            this.number_of_inject = 1000;
+            this.number_of_inject = 100;
             this.injected = new Float32Array(this.number_of_inject * 4); // 4 vertices per point
             for (var i = 0; i < this.number_of_inject * 4; i += 4) {
                 this.injected[i] = this.origin.x ;
@@ -514,7 +521,7 @@ AFRAME.registerComponent('flow-tracer', {
         
             var injectMaterial = new THREE.ShaderMaterial({
                 uniforms: {
-                    size: { value: 8.0 },
+                    size: { value: 8 },
                     color: { value: new THREE.Color(1.0, 0.2, 0.2) } // Uniform for color
                 },
                 vertexShader: 
@@ -523,7 +530,7 @@ AFRAME.registerComponent('flow-tracer', {
                     void main() {
                         vPosition = position;
                         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_PointSize = size ;//* (300.0 / -mvPosition.z);
                         gl_Position = projectionMatrix * mvPosition;
                     }
                 `,
@@ -564,8 +571,8 @@ AFRAME.registerComponent('flow-tracer', {
     getSimulationInfo: function() {
         var newSTR  = getDateTimeString(this.current_time);
     //    newSTR += "\nDt: "+(this.time_step_ms).toFixed(2);
-        newSTR += "     -   one second is "+this.speedups_text[this.speedup_index];
-        newSTR += "\nTracers in flow: "+ this.injectCount;
+        newSTR += "     -   One second is "+this.speedups_text[this.speedup_index];
+        newSTR += "\nTracers in flow (reset at 100): "+ this.injectCount;
      //   newSTR += "\ndx: "+this.resolution;
     //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
     //    newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
@@ -582,6 +589,7 @@ AFRAME.registerComponent('flow-tracer', {
             return;
         }
         if (this.injectCount >= this.number_of_inject){
+            this.injectCount = 0;
             return;
         }
         var NX = intersectionPoint.x  ;
