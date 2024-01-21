@@ -52,7 +52,7 @@ function interpolateAt(s_field, x, y,timeIndex1, timeIndex2, rIndices) {
         fracX * ((1 - fracY) * matrix[ix2][iy1] + fracY * matrix[ix2][iy2]);
 
     return {
-        z: 0.27,//interpolate(altitude),
+        z: interpolate(altitude),
         u: interpolate(U1)*rIndices+interpolate(U2)*(1-rIndices),
         v: interpolate(V1)*rIndices+interpolate(V2)*(1-rIndices)
     };
@@ -314,17 +314,68 @@ AFRAME.registerComponent('shoot-controls', {
 AFRAME.registerComponent('flow-tracer', {
     
     schema: {
-        number_of_particles: {type: 'number', default: 15000},
-        resolution : {type: 'number', default: 1200 },
-        sim_speedup: {type: 'number', default: 3600 },
+        number_of_particles: {type: 'number', default: 5000},
         integration_step : {type: 'number', default: 10 },
         target_advect_per_s : {type: 'number', default: 30 },
         trail_length: {type: 'number', default: 100},
-        datafile: {type: 'string', default: "none"}
+        flowTracerSpeed: {type: 'number', default: 100},
+        raycast_plane: {type: 'boolean', default: true},
+        scale: {type: 'number', default: 100000},
+        
+        
+        datafile: {type: 'string', default: "none"},
+        demFile: {type: 'string', default: "none"},
+        demColumns: {type: 'number', default: 10}, 
+        demLines: {type: 'number', default: 10},
+        demMax: {type: 'number', default: 10},
+        demTexture: {type: 'string', default: "none"},
+        dataPointResolution: {type: 'number', default:100}, // one point equals 1000 meters by default
+
+        verticalExageration: {type: 'number', default: 1}
     },
     
     
     init: function() {
+    
+    this.resolution  = this.data.scale; // one real meter equals this.data.scale meters
+    this.dataPointResolution = this.data.dataPointResolution;
+    this.maxAltitude = this.data.demMax;
+    this.extents = {width: (this.data.demColumns*this.dataPointResolution)/this.resolution,
+                    height: (this.data.demLines*this.dataPointResolution)/this.resolution}
+        ;
+    this.origin = {x: -(this.extents.width/2),
+           y :-(this.extents.height/2)
+          };
+    
+    this.zScaleFactor = this.data.verticalExageration/65536; // data is scaled onver utin16 max value = 2**16 = 65536
+        
+    console.log("Inited Loaded ",this.origin ,this.extents, this.zScaleFactor , this.data.zScaleFactor  );
+      // Create terrain entity
+    var terrainEntity = document.createElement('a-entity');
+    terrainEntity.setAttribute('terrain-model', `map: ${this.data.demTexture}; dem: ${this.data.demFile}; planeWidth: ${this.extents.width}; planeHeight: ${this.extents.height}; segmentsWidth: ${+this.data.demColumns - 1}; segmentsHeight: ${+this.data.demLines - 1}; zPosition: ${this.data.verticalExageration}; wireframe: false`);
+
+    // Conditionally set ID based on raycast_plane
+    if (this.data.raycast_plane) {
+        // If raycast_plane is true, create and append raycasting plane
+        var raycastingPlane = document.createElement('a-entity');
+        raycastingPlane.setAttribute('id', 'flow_map_caster');
+        raycastingPlane.setAttribute('geometry', `primitive: plane; width: ${this.extents.width}; height: ${this.extents.height}`);
+        raycastingPlane.setAttribute('material', 'color: blue; side: double; transparent: true; opacity: 0.0');
+        raycastingPlane.setAttribute('position', `0 ${this.zScaleFactor*(this.maxAltitude-this.maxAltitude/400)} 0`);
+        raycastingPlane.setAttribute('rotation', '-90 0 0');
+        raycastingPlane.classList.add('raycastable');
+
+        this.el.appendChild(raycastingPlane);
+    } else {
+        // If raycast_plane is false, set ID to terrainEntity
+        terrainEntity.setAttribute('id', 'flow_map_caster');
+        terrainEntity.classList.add('raycastable');
+    }
+
+    this.el.appendChild(terrainEntity);
+        
+        
+        
         
     this.isStopped = true;
     this.text_tracker = null;
@@ -340,21 +391,30 @@ AFRAME.registerComponent('flow-tracer', {
         .then(blob => JSZip.loadAsync(blob))
         .then(zip => {
             // Remplacez 'nomfichier.json' par le nom de votre fichier JSON à l'intérieur du ZIP
-            console.log("Data unzipped load");
+  
             return zip.file('data.json').async('string');
         })
         .then(content => {
             
             // Créer une copie profonde des données JSON
             this.data2D = JSON.parse(content);
-
+        
+            this.data2D.origin = this.origin;
+            this.data2D.extents = this.extents;
             this.timeIndices = Object.keys(this.data2D.data);
             this.tickTimeDelta = 0;
             this.tickTime = 0;
-
+            console.log("Data unzipped load" + this.data2D.altitude[10][10]);
+        
+            for (var i = 0; i < this.data2D.altitude.length ; i += 1) {
+                for (var j = 0; j < this.data2D.altitude[0].length ; j += 1) {
+                    this.data2D.altitude[i][j] =  (this.data2D.altitude[i][j] ) * this.zScaleFactor + (this.zScaleFactor/20);
+                }
+            }
+            console.log("Data unzipped after" + this.data2D.altitude[10][10]);
             this.pointsGeometry = new THREE.BufferGeometry();
             this.trail_length = this.data.trail_length;
-     
+            this.flowTracerSpeed = this.data.flowTracerSpeed;
             this.cMaxAps =   1000.0/this.data.target_advect_per_s;
             this.speedups_values = [-3600*24*7,-3600*24*2,-3600*24,-3600*3,-3600, -60, 0, 60, 3600, 3600*3, 3600*24,3600*48,3600*24*7];
             this.speedups_text = ["a week back","2 days back","a day back","3 hours back","an hour back", "a minute back", "nothing", "a minute", "an hour", "3 hours", "a day","2 days","a week"];
@@ -366,7 +426,7 @@ AFRAME.registerComponent('flow-tracer', {
         
             this.currentAdvDuration = 0;
         
-            this.resolution  = this.data.resolution;
+            
             this.integration_step  = this.data.integration_step;
             this.number_of_particles = this.data.number_of_particles;
             this.initial_time = this.timeIndices[0];
@@ -375,7 +435,7 @@ AFRAME.registerComponent('flow-tracer', {
             this.current_time = this.timeIndices[0];
             this.timeIndex1 = this.initial_time;
             this.timeIndex2 = +this.initial_time+ +this.timeIndices_delta;
-            
+            this.value_bounds = this.data2D.value_bounds;
             this.rIndices = 1;
             console.log(this.initial_time+" Data Loaded "+this.timeIndex2);
             this.shootOK = true;
@@ -386,15 +446,15 @@ AFRAME.registerComponent('flow-tracer', {
             this.ages = new Float32Array(this.number_of_particles); // next update time
             this.trail = new Float32Array(this.number_of_particles * 4 * this.trail_length); // 3 vertices per point
             this.trailvalues = new Float32Array(this.number_of_particles * 1 * this.trail_length); // 3 vertices per point
-            this.origin = this.data2D.origin;
-            this.extents = this.data2D.extents;
+        
+
         
         
             var maxOverallSpeed = Math.max(
-                Math.sqrt(Math.pow(this.extents.U[0], 2) + Math.pow(this.extents.V[0], 2)),
-                Math.sqrt(Math.pow(this.extents.U[0], 2) + Math.pow(this.extents.V[1], 2)),
-                Math.sqrt(Math.pow(this.extents.U[1], 2) + Math.pow(this.extents.V[0], 2)),
-                Math.sqrt(Math.pow(this.extents.U[1], 2) + Math.pow(this.extents.V[1], 2))
+                Math.sqrt(Math.pow(this.value_bounds.U[0], 2) + Math.pow(this.value_bounds.V[0], 2)),
+                Math.sqrt(Math.pow(this.value_bounds.U[0], 2) + Math.pow(this.value_bounds.V[1], 2)),
+                Math.sqrt(Math.pow(this.value_bounds.U[1], 2) + Math.pow(this.value_bounds.V[0], 2)),
+                Math.sqrt(Math.pow(this.value_bounds.U[1], 2) + Math.pow(this.value_bounds.V[1], 2))
             );
             console.log("MaxR is ",maxOverallSpeed);
             this.cflcondition = this.resolution/maxOverallSpeed;
@@ -507,7 +567,7 @@ AFRAME.registerComponent('flow-tracer', {
         
         
         
-            this.number_of_inject = 100;
+            this.number_of_inject = 1000;
             this.injected = new Float32Array(this.number_of_inject * 4); // 4 vertices per point
             for (var i = 0; i < this.number_of_inject * 4; i += 4) {
                 this.injected[i] = this.origin.x ;
@@ -571,8 +631,8 @@ AFRAME.registerComponent('flow-tracer', {
     getSimulationInfo: function() {
         var newSTR  = getDateTimeString(this.current_time);
     //    newSTR += "\nDt: "+(this.time_step_ms).toFixed(2);
-        newSTR += "     -   One second is "+this.speedups_text[this.speedup_index];
-        newSTR += "\nTracers in flow (reset at 100): "+ this.injectCount;
+        newSTR += " - One second is "+this.speedups_text[this.speedup_index];
+        newSTR += "\nTracers : "+ this.injectCount+" on "+this.number_of_inject;
      //   newSTR += "\ndx: "+this.resolution;
     //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
     //    newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
@@ -589,7 +649,7 @@ AFRAME.registerComponent('flow-tracer', {
             return;
         }
         if (this.injectCount >= this.number_of_inject){
-            this.injectCount = 0;
+            //this.injectCount = 0;
             return;
         }
         var NX = intersectionPoint.x  ;
@@ -732,8 +792,8 @@ AFRAME.registerComponent('flow-tracer', {
                
                 rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
                 
-                this.positions[i] += (rloc.u * this.cMaxAps* 60 )/this.resolution;
-                this.positions[i + 2] += (rloc.v * this.cMaxAps * 60 )/this.resolution;
+                this.positions[i] += (rloc.u * this.cMaxAps* this.flowTracerSpeed )/this.resolution;
+                this.positions[i + 2] += (rloc.v * this.cMaxAps * this.flowTracerSpeed )/this.resolution;
 
 
                 /*if (this.trail_index == 0 ) {

@@ -61,42 +61,45 @@
 </script>
   </head>
   <body> 
-      <a-scene id="flowview" arjs='sourceType: webcam; debugUIEnabled: false;'>      <!-- renderer="antialias: true"--->
+    <a-scene id="flowview" arjs='sourceType: webcam; debugUIEnabled: false;'>
+        <!-- renderer="antialias: true" -->
 
-    <a-entity id="surface-current" flow-tracer="datafile: stimed.zip; resolution: 120000 ; number_of_particles: 4000;  trail_length: 15" position="0 0 0"></a-entity>
-  
-          <a-entity movement-controls="fly: true; speed: 0.1" position="0 5.40 1.60">
-              <a-entity camera position="0 0 0" rotation="-75 0 0" >
-              </a-entity>
-              
-                  <a-cursor id="handControl" laser-controls="hand: right" shoot-controls
-              raycaster="objects: .raycastable; interval: 200"
-              material="color: black; shader: flat">
-    </a-cursor>
-              
-       <a-entity id="timeLabel" text-info="defaultText: Not loaded" color="black" position="-4 2 -5" scale="1 1 1" rotation="45 0 0"></a-entity>
-          
-              
+        <a-entity id="surface-current" 
+                  flow-tracer="datafile: stimed.zip; 
+                               number_of_particles: 4000; 
+                               trail_length: 15;
+                               integration_step: 10; 
+                               target_advect_per_s: 30; 
+                               flowTracerSpeed: 100; 
+                               raycast_plane: true; 
+                               scale: 100000; 
+                               demFile: url(elevation.bin); 
+                               demColumns: 1101; 
+                               demLines: 463; 
+                               demMax: 3500; 
+                               demTexture: url(marsN.jpg); 
+                               dataPointResolution: 1200; 
+                               verticalExageration: 6"
+                  position="0 0 0">
         </a-entity>
-   
 
+        <a-entity movement-controls="fly: true; speed: 0.1" position="0 2.70 1.0">
+            <a-entity camera position="0 0 0" rotation="-75 0 0"></a-entity>
+            <a-cursor id="handControl" 
+                      laser-controls="hand: right" 
+                      shoot-controls
+                      raycaster="objects: .raycastable; interval: 200"
+                      material="color: black; shader: flat">
+            </a-cursor>
 
-      <a-entity 
-        terrain-model="map: url(marsN.jpg);
-          dem: url(elevation.bin);
-          planeWidth: 11.01;
-          planeHeight: 4.63;
-          segmentsWidth: 1100;
-          segmentsHeight: 462;
-          zPosition: 5.00;
-          wireframe:false"
-      ></a-entity>
-       <a-entity id="flow_map_caster" class="raycastable"
-            geometry="primitive: plane; width: 11.01; height: 4.63"
-            material="color: blue; side: double; transparent: false; opacity: 0.5"
-            position="0 0.265 0"
-            rotation="-90 0 0">
-  </a-entity>
+            <a-entity id="timeLabel" 
+                      text-info="defaultText: Not loaded" 
+                      color="black" 
+                      position="-4 2 -5" 
+                      scale="1 1 1" 
+                      rotation="0 0 0">
+            </a-entity>
+        </a-entity>
     </a-scene>
 
   </body>
