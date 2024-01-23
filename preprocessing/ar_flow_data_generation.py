@@ -168,6 +168,77 @@ def getShape(vtk_data):
 
 
 
+def extract_last_number(filepath):
+    import re
+
+    # Extraire le nom de base du fichier (sans le chemin)
+    base = os.path.basename(filepath)
+    
+    # Utiliser une expression régulière pour trouver tous les nombres dans le nom de fichier
+    numbers = re.findall(r'\d+', base)
+    
+    # Renvoyer le dernier nombre trouvé, converti en entier
+    return int(numbers[-1]) if numbers else 0
+
+import glob,os
+from datetime import datetime, timedelta
+#str(ds.time.data[0])
+import pandas as pd
+
+def FFMNHVTKtoTimedArraync():
+    VTKINPUTPATTERN = "/Users/filippi_j/data/2024/barbaggio/MNHfields/output.full.*.vts"
+    
+    refTimeString = "2024-01-03T00:00:00.000000000" 
+    contours1  = glob.glob(VTKINPUTPATTERN)
+    
+    selectionSorted =  sorted(contours1, key=extract_last_number)[::20]
+    
+    refTime = datetime.fromisoformat(refTimeString[:26])
+    
+    filetimes = [refTime + timedelta(seconds=extract_last_number(filePath)) for filePath in selectionSorted]
+    time_index = pd.to_datetime(filetimes)
+    
+    vtk_data = read_vtk_file(selectionSorted[0])
+    shape_info = getShape(vtk_data)
+    NI, NJ, NK = shape_info["shape"]
+    # Create DataArrays
+    dims = ('time', 'NI', 'NJ')
+    coords = {'time': time_index, 'NI': range(NI), 'NJ': range(NJ)}
+    XarrayU = xr.DataArray(name="U", dims=dims, coords=coords)
+    XarrayV = xr.DataArray(name="V", dims=dims, coords=coords)
+    XarrayW = xr.DataArray(name="W", dims=dims, coords=coords)
+    XarrayTKE = xr.DataArray(name="TKE", dims=dims, coords=coords)
+    
+    
+    
+    for filePath, filetime in zip(selectionSorted, filetimes):
+        seconds = extract_last_number(filePath)
+        filetime = refTime + timedelta(seconds=seconds)
+        
+        vtk_data = read_vtk_file(filePath)
+        shape_info = getShape(vtk_data)
+        NI, NJ, NK = shape_info["shape"]
+    
+        UVW = vtk_to_numpy(vtk_data.GetPointData().GetArray("Wind"))
+        U = np.reshape(UVW[:,0], (NK, NJ, NI))[0,:,:]
+        V = np.reshape(UVW[:,1], (NK, NJ, NI))[0,:,:]
+        W = np.reshape(UVW[:,2], (NK, NJ, NI))[0,:,:]
+        TKE = np.reshape(vtk_to_numpy(vtk_data.GetPointData().GetArray("TKE")), (NK, NJ, NI))[0,:,:]
+    
+        XarrayU.loc[filetime, :, :] = U
+        XarrayV.loc[filetime, :, :] = V
+        XarrayW.loc[filetime, :, :] = W
+        XarrayTKE.loc[filetime, :, :] = TKE
+    
+    # Combine into a single dataset
+    ds = xr.Dataset({'U': XarrayU, 'V': XarrayV, 'W': XarrayW, 'TKE': XarrayTKE})
+    
+    # Save dataset
+    ds.to_netcdf('/Users/filippi_j/data/2024/barbaggio/MNHfields/compilX.nc')
+    return ds
+
+
+        
 
 
 
@@ -218,23 +289,23 @@ def rr(A,tkey='time', lonkey='lon', latkey='lat'):
     
     return tX.data
 
-def menorData(filePath="/Users/filippi_j/data/2023/oursins/champs_meno_BE201905.nc",altBinOut='/Users/filippi_j/soft/ARflow/elevation.bin',jsonZipBinOut="/Users/filippi_j/soft/ARflow/stimed.zip"):
-    ds = xr.open_dataset(filePath)
+def menorData(infilePath="/Users/filippi_j/data/2023/oursins/champs_meno_BE201905.nc",altBinOut='/Users/filippi_j/soft/ARflow/med_currents_AR/elevation.bin',jsonZipBinOut="/Users/filippi_j/soft/ARflow/med_currents_AR/stimed.zip"):
+    ds = xr.open_dataset(infilePath)
     
     elevation = ds.H0.data
     
     resolution = 1200
     floorValue = np.nanmax(elevation).astype(np.uint16)
     
-    zscale=floorValue/65536.0;
+
     
     array_uint16 = floorValue-(np.flipud(np.abs(elevation).astype(np.uint16)))
-    print(np.max(array_uint16),np.min(array_uint16),zscale)
+    print(np.max(array_uint16),np.min(array_uint16))
     with open(altBinOut, 'wb') as file:
         array_uint16.tofile(file)
        
     
-    sliceT = 8
+    sliceT = 32
     tlist = list((ds.time[::sliceT].data.astype(int)/1000000).astype(int))
     print("timeOK")
     U = rr(ds.UZ[::sliceT,-2,:,:],"time","ni_u","nj_u")
@@ -244,33 +315,74 @@ def menorData(filePath="/Users/filippi_j/data/2023/oursins/champs_meno_BE201905.
 
     Z0 = np.ones( shapeU[1:])*floorValue
 
+  
+    
+    
+    return arrayTo2DTJSON( Z0, U, -V, resolution, tlist, filename=jsonZipBinOut)
+    
+
+def compilMNH2Json():          
+    infilePath="/Users/filippi_j/data/2024/barbaggio/MNHfields/FCAST.3.FIRE.001.nc"
+    flowfilePath="/Users/filippi_j/data/2024/barbaggio/MNHfields/compil.nc"
+    altBinOut='/Users/filippi_j/soft/ARflow/bbelevation.bin'
+    jsonZipBinOut="/Users/filippi_j/soft/ARflow/bbtimed2.zip"
+    
+    dsX = FFMNHVTKtoTimedArraync()
+    
+    land = xr.open_dataset(infilePath)   
+    ds = xr.open_dataset(flowfilePath) 
+    elevation = land.ZS.data[1:,1:]
+    resolution = 80
+    floorValue = np.nanmax(elevation).astype(np.uint16)
+    
+        
+    array_uint16 = np.flipud(np.abs(elevation).astype(np.uint16))
+                             
+    print(np.max(array_uint16),np.min(array_uint16))
+    with open(altBinOut, 'wb') as file:
+        array_uint16.tofile(file)
+       
+    
+    sliceT = 2
+    tlist = list((ds.time[::sliceT].data.astype(int)/1000000).astype(int))
+    
+    
+    RDU = ds.U[::sliceT,:,:] 
+    RDV = ds.V[::sliceT,:,:]
+    RDTKE = ds.TKE[::sliceT,:,:]
+    
+   # RDU[:] = dsX.U[0,:,:] 
+   # RDV[:] = dsX.V[0,:,:] 
+   # RDTKE[:] = dsX.TKE[0,:,:] 
+    
+    RDU[0].plot()
+    TKE = rr(RDTKE,"time","NJ","NI")
+    U = rr(RDU,"time","NJ","NI")  
+    V = rr(RDV,"time","NJ","NI") 
+    
+    shapeU = np.shape(U)
+    
+    #TKE = rr(ds.U[::sliceT,:,:],"time","NI","NJ")
+    #U = rr(ds.U[::sliceT,:,:],"time","NI","NJ")  
+    #V = rr(ds.V[::sliceT,:,:],"time","NI","NJ") 
+    
+    
+    print("VOK",np.max(V),np.min(V))
+    
+    Z0 = array_uint16
+    
     print("UOK",np.shape(Z0), shapeU)
-    altBin=zscale*(np.flipud(np.rot90(array_uint16.astype(np.float32)))/floorValue)
+    altBin=np.flipud(np.rot90(array_uint16.astype(np.float32)))
     
     print("SHOPA Uint",np.shape(altBin), shapeU, np.min(Z0),np.max(Z0),np.min(altBin),np.max(altBin))
     
-    return arrayTo2DTJSON( Z0, -U, V, resolution, tlist, filename=jsonZipBinOut)
-        
-def MNHFFRunData():
+    A = arrayTo2DTJSON( altBin+10, U, -V, resolution, tlist, filename=jsonZipBinOut)
     
-     
-
-
-
-        
-        
-        
-        
-        
-        
-        
-
-
-
-
-
-
-
+    
+#compilMNH2Json()
+menorData()
+    
+    
 
 
 

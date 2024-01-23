@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.2.0/dist/aframe-extras.min.js"></script>
+    <script>
+     var sigma = 10.0;
+    var rho = 28.0;
+    var beta = 8.0 / 3.0;
+    const npart = 1000000;
+    const radius = 20;
+    const maxage = 10;
+    const Aspeed = 8   ;
+    var localTime = 0;
+        
+        function updateTimeLabel(newT) {
+            const timeString = "Butterfly t: " +  newT.toFixed(0) + "\nsigma: "+ sigma.toFixed(1) + " rho:"+ rho.toFixed(1) + " beta:"+ beta.toFixed(1) ;
+
+           const timeLabel = document.getElementById('timeLabel');
+           if (timeLabel) {
+               timeLabel.setAttribute('value', timeString);
+           }
+        }
+        
+AFRAME.registerComponent('points-sphere', {
+
+
+    init: function() {
+        this.pointsGeometry = new THREE.BufferGeometry();
+        this.positions = new Float32Array(npart * 3); // 3 vertices per point
+        this.ages = new Float32Array(npart); // 3 vertices per point
+  
+
+        // Initialize positions and velocities
+        for (var i = 0; i < npart; i += 1) {
+            var x = (Math.random() - 0.5) * 2 * radius;
+            var y = (Math.random() - 0.5) * 2 * radius;
+            var z = (Math.random() - 0.5) * 2 * radius;
+          
+            var distance = Math.sqrt(x*x + y*y + z*z);
+
+            if (distance < radius) {
+                this.positions[i*3] = x;
+                this.positions[i*3 + 1] = y;
+                this.positions[i*3 + 2] = z;
+                this.ages[i] = Math.random() * maxage;
+            } else {
+                i -= 1;
+            }
+        }
+
+        this.pointsGeometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+        this.pointsGeometry.setAttribute('colorIndex', new THREE.BufferAttribute(this.ages, 1));
+        
+        var pointsMaterial = new THREE.ShaderMaterial({
+                        uniforms: {
+                        color: {value: new THREE.Color('#FF0000')},
+                        size: {value: 0.03}
+                    },
+                    vertexShader: `
+                        attribute float colorIndex;
+                        uniform float size;
+                        varying float vColorIndex;
+                        void main() {
+                            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                            gl_PointSize = size * (300.0 / -mvPosition.z);
+                            gl_Position = projectionMatrix * mvPosition;
+                            vColorIndex = colorIndex; // Pass the color index to the fragment shader
+                        }
+                    `,
+                    fragmentShader: `
+                        varying float vColorIndex;
+                        vec3 inferno(float t) {
+                            // Values adjusted to approximate the Inferno colormap
+                            float r = sin(t * 3.1415);
+                            float g = sin(t * 3.1415 + 2.09);
+                            float b = sin(t * 3.1415 - 2.09);
+                            return vec3(r, g, b);
+                        }
+
+                        void main() {
+                            float r = length(gl_PointCoord - vec2(0.5, 0.5));
+                            float delta = 0.1;
+                            float opacity = 1.0 - smoothstep(0.5 - delta, 0.5, r);
+                            if (opacity < 0.01) discard;
+
+                            float indexFactor = clamp(vColorIndex / 10.0, 0.0, 1.0);
+                            vec3 color = inferno(indexFactor);
+
+                            gl_FragColor = vec4(color, opacity);
+                        }
+                    `,
+                    depthTest: true,
+                    transparent: true
+    
+        });
+
+        this.points = new THREE.Points(this.pointsGeometry, pointsMaterial);
+        this.el.setObject3D('points', this.points);
+    },
+
+    tick: function(time, timeDelta) {
+
+        const dt = timeDelta / (Aspeed*1000.0);
+        localTime += dt;
+        let normalizedTime = (((localTime*10.0)%100+1) / 100) * 2 * Math.PI;
+        // Mise à jour de sigma en utilisant une fonction sinusoïdale
+        sigma = 2 + (20 - 2) * (Math.sin(normalizedTime) + 1) / 2;
+
+        // Mise à jour de rho de la même manière
+        rho = 10 + (60 - 10) * (Math.sin(normalizedTime + Math.PI / 2) + 1) / 2;
+
+        // Mise à jour de beta de la même manière
+        beta = 0.7 + (15/3 - 0.7) * (Math.sin(normalizedTime + Math.PI) + 1) / 2;
+
+        for (var i = 0; i < npart; i += 1) {
+            
+            const dx = sigma * (this.positions[i*3 + 1] - this.positions[i*3]) * dt;
+            const dy = (this.positions[i*3] * (rho - this.positions[i*3 + 2]) - this.positions[i*3 + 1]) * dt;
+            const dz = (this.positions[i*3] * this.positions[i*3 + 1] - beta * this.positions[i*3 + 2]) * dt;
+            this.ages[i] += dt;
+            this.positions[i*3] += dx;
+            this.positions[i*3 + 1] += dy;
+            this.positions[i*3 + 2] += dz;
+
+            if (this.ages[i] > maxage) {
+                this.positions[i*3] =  (Math.random() - 0.5) * 2 * radius;
+                this.positions[i*3 + 1] = (Math.random() - 0.5) * 2 * radius;
+                this.positions[i*3 + 2] = (Math.random() - 0.5) * 2 * radius  ;
+                this.ages[i] = 0;
+            }
+        }
+        updateTimeLabel(localTime);
+        // Update the geometry
+        this.pointsGeometry.attributes.position.needsUpdate = true;
+        this.pointsGeometry.attributes.colorIndex.needsUpdate = true;
+    }
+});
+    
+        
+    </script>
+    
+    
+    
+    
+    
+    
+    
+    
+</head>
+<body>
+    <a-scene arjs='sourceType: webcam; debugUIEnabled: false;' background="color: black">
+        <a-entity points-sphere position="0 0 0" scale ="0.1 0.1 0.1"></a-entity>
+        <a-entity movement-controls="fly: true">
+            <a-entity camera position="0 0 8" look-controls></a-entity>
+        </a-entity>
+         <a-text id="timeLabel" value="Butterfly" color="pink" position="-3 -3 0" scale="2 2 2"></a-text>
+        <a-text value="x += sigma*(y-x)*dt\ny += (x*(rho-z)-y) * dt\nz += (x*y-beta*z)*dt" color="pink" position="-3 -4 0" scale="1 1 1"></a-text>
+
+    </a-scene>
+    
+</body>
+</html>

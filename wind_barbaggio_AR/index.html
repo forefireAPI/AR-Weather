@@ -65,25 +65,24 @@
         <!-- renderer="antialias: true" -->
 
         <a-entity id="surface-current" 
-                  flow-tracer="datafile: stimed.zip; 
+                  flow-tracer="datafile: bbtimed2.zip; 
                                number_of_particles: 4000; 
-                               trail_length: 15;
-                               integration_step: 10; 
+                               trail_length: 20;
                                target_advect_per_s: 30; 
-                               flowTracerSpeed: 100; 
-                               raycast_plane: true; 
-                               scale: 100000; 
-                               demFile: url(elevation.bin); 
-                               demColumns: 1101; 
-                               demLines: 463; 
-                               demMax: 3500; 
-                               demTexture: url(marsN.jpg); 
-                               dataPointResolution: 1200; 
-                               verticalExageration: 6"
+                               flowTracerSpeed: 0.03; 
+                               raycast_plane: false; 
+                               scale: 5000; 
+                               demFile: url(bbelevation.bin); 
+                               demColumns: 151; 
+                               demLines: 151; 
+                               demMax: 994; 
+                               demTexture: url(bbL.jpg); 
+                               dataPointResolution: 80; 
+                               verticalExageration: 8"
                   position="0 0 0">
         </a-entity>
 
-        <a-entity movement-controls="fly: true; speed: 0.1" position="0 2.70 1.0">
+        <a-entity movement-controls="fly: true; speed: 0.1" position="0 1.70 0.5">
             <a-entity camera position="0 0 0" rotation="-75 0 0"></a-entity>
             <a-cursor id="handControl" 
                       laser-controls="hand: right" 

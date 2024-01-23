@@ -22,6 +22,7 @@ function getDateTimeString(timeInMilliseconds) {
 }
 
 function interpolateAt(s_field, x, y,timeIndex1, timeIndex2, rIndices) {
+    
     // Destructuring to get origin, extents, and altitude
     const { origin, extents, altitude } = s_field;
 
@@ -315,12 +316,11 @@ AFRAME.registerComponent('flow-tracer', {
     
     schema: {
         number_of_particles: {type: 'number', default: 5000},
-        integration_step : {type: 'number', default: 10 },
         target_advect_per_s : {type: 'number', default: 30 },
         trail_length: {type: 'number', default: 100},
         flowTracerSpeed: {type: 'number', default: 100},
         raycast_plane: {type: 'boolean', default: true},
-        scale: {type: 'number', default: 100000},
+        scale: {type: 'number', default: 1000000},
         
         
         datafile: {type: 'string', default: "none"},
@@ -416,28 +416,26 @@ AFRAME.registerComponent('flow-tracer', {
             this.trail_length = this.data.trail_length;
             this.flowTracerSpeed = this.data.flowTracerSpeed;
             this.cMaxAps =   1000.0/this.data.target_advect_per_s;
-            this.speedups_values = [-3600*24*7,-3600*24*2,-3600*24,-3600*3,-3600, -60, 0, 60, 3600, 3600*3, 3600*24,3600*48,3600*24*7];
-            this.speedups_text = ["a week back","2 days back","a day back","3 hours back","an hour back", "a minute back", "nothing", "a minute", "an hour", "3 hours", "a day","2 days","a week"];
-            this.speedup_index = 6;
+            this.speedups_values = [-3600*24*7,-3600*24*2,-3600*24,-3600*3,-3600, -600,-60,-10, -1, 0, 1, 10, 60, 600, 3600, 3600*3, 3600*24,3600*48,3600*24*7];
+            this.speedups_text = ["a week back","2 days back","a day back","3 hours back","an hour back",  "10 minutes back","a minute back", "10 seconds back", "a second back", "nothing", "a second", "10 seconds","a minute", "10 minutes", "an hour", "3 hours", "a day","2 days","a week"];
+            this.speedup_index = 10;
         
             this.sim_speedup = this.speedups_values[this.speedup_index];
         
             this.time_step_ms = this.sim_speedup*this.cMaxAps;
         
             this.currentAdvDuration = 0;
-        
-            
-            this.integration_step  = this.data.integration_step;
+           
             this.number_of_particles = this.data.number_of_particles;
             this.initial_time = this.timeIndices[0];
             this.end_time = this.timeIndices[this.timeIndices.length-1];
             this.timeIndices_delta = this.timeIndices[1]-this.timeIndices[0];
             this.current_time = this.timeIndices[0];
-            this.timeIndex1 = this.initial_time;
+            this.timeIndex1 = +this.initial_time;
             this.timeIndex2 = +this.initial_time+ +this.timeIndices_delta;
             this.value_bounds = this.data2D.value_bounds;
             this.rIndices = 1;
-            console.log(this.initial_time+" Data Loaded "+this.timeIndex2);
+            console.log(" Data Loaded "+getDateTimeString(this.timeIndex1)+" to "+getDateTimeString(this.timeIndex2));
             this.shootOK = true;
             this.lastShootOK = 0;
             this.trail_index = 0;
@@ -450,20 +448,20 @@ AFRAME.registerComponent('flow-tracer', {
 
         
         
-            var maxOverallSpeed = Math.max(
+            this.maxOverallSpeed = Math.max(
                 Math.sqrt(Math.pow(this.value_bounds.U[0], 2) + Math.pow(this.value_bounds.V[0], 2)),
                 Math.sqrt(Math.pow(this.value_bounds.U[0], 2) + Math.pow(this.value_bounds.V[1], 2)),
                 Math.sqrt(Math.pow(this.value_bounds.U[1], 2) + Math.pow(this.value_bounds.V[0], 2)),
                 Math.sqrt(Math.pow(this.value_bounds.U[1], 2) + Math.pow(this.value_bounds.V[1], 2))
             );
-            console.log("MaxR is ",maxOverallSpeed);
-            this.cflcondition = this.resolution/maxOverallSpeed;
+            console.log("MaxR is ",this.maxOverallSpeed);
+            this.cflcondition = this.resolution/this.maxOverallSpeed;
             
             for (var i = 0; i < this.number_of_particles * 4; i += 4) {
                 this.positions[i] = this.origin.x + Math.random() * this.extents.width;
                 this.positions[i + 2] = this.origin.y + Math.random() * this.extents.height;
-
-                rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+1],this.timeIndex1,this.timeIndex2,this.rIndices);
+                //console.log("I:",this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
+                rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
                 this.positions[i + 1] = rloc.z;
                 this.positions[i + 3] = 9999;
             }
@@ -486,9 +484,9 @@ AFRAME.registerComponent('flow-tracer', {
 
             var pointsMaterial = new THREE.ShaderMaterial({
                 uniforms: {
-                    size: { value: 3},
+                    size: { value: 5},
                     minClampValue: { value: 0.0 }, // Define min clamp value
-                    maxClampValue: { value: 100. }  // Define max clamp value
+                    maxClampValue: { value: 30. }  // Define max clamp value
                 },
                 vertexShader: 
                 `
@@ -540,14 +538,14 @@ AFRAME.registerComponent('flow-tracer', {
                         }
 
                         vec4 colormap(float x) {
-                            float t = x * 255.0;
+                            float t = x*100.0;
                             float r = clamp(colormap_red(t) / 255.0, 0.0, 1.0);
                             float g = clamp(colormap_green(t) / 255.0, 0.0, 1.0);
                             float b = clamp(colormap_blue(t) / 255.0, 0.0, 1.0);
                             float a = clamp(colormap_alpha(t) / 255.0, 0.0, 1.0);
                             return vec4(r, g, b, 1.0);
                         }
-                        void main() { 
+                         void main() { 
 
                             float indexFactor = clamp(vColorIndex, minClampValue, maxClampValue);
                             gl_FragColor = colormap(indexFactor); // Combines rgb with opacity
@@ -560,10 +558,10 @@ AFRAME.registerComponent('flow-tracer', {
 
             // Set the uniforms for your shader material
             pointsMaterial.uniforms.minClampValue.value = 0;
-            pointsMaterial.uniforms.maxClampValue.value = maxOverallSpeed;
+            pointsMaterial.uniforms.maxClampValue.value = this.maxOverallSpeed;
             this.points = new THREE.Points(this.pointsGeometry, pointsMaterial);
             this.el.setObject3D('points', this.points);
-        
+            console.log(pointsMaterial.uniforms.minClampValue.value,pointsMaterial.uniforms.maxClampValue.value)
         
         
         
@@ -582,7 +580,7 @@ AFRAME.registerComponent('flow-tracer', {
             var injectMaterial = new THREE.ShaderMaterial({
                 uniforms: {
                     size: { value: 8 },
-                    color: { value: new THREE.Color(1.0, 0.2, 0.2) } // Uniform for color
+                    color: { value: new THREE.Color(1.0, 1.0, 0.2) } // Uniform for color
                 },
                 vertexShader: 
                 `   uniform float size;
@@ -616,7 +614,9 @@ AFRAME.registerComponent('flow-tracer', {
             this.injectGeometry = new THREE.BufferGeometry();
             this.injectGeometry.setAttribute('position', new THREE.BufferAttribute(this.injected, 4));
             this.injectPoints = new THREE.Points(this.injectGeometry, injectMaterial);
-        this.injectPoints.frustumCulled = false;
+            
+            this.injectPoints.frustumCulled = false;
+        
             this.el.setObject3D('injections', this.injectPoints);
         
            this.isStopped = false;
@@ -632,7 +632,7 @@ AFRAME.registerComponent('flow-tracer', {
         var newSTR  = getDateTimeString(this.current_time);
     //    newSTR += "\nDt: "+(this.time_step_ms).toFixed(2);
         newSTR += " - One second is "+this.speedups_text[this.speedup_index];
-        newSTR += "\nTracers : "+ this.injectCount+" on "+this.number_of_inject;
+        newSTR += "\n1m = "+this.resolution+"m - Tracers : "+ this.injectCount+"/"+this.number_of_inject;
      //   newSTR += "\ndx: "+this.resolution;
     //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
     //    newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
@@ -802,7 +802,6 @@ AFRAME.registerComponent('flow-tracer', {
                 }*/
                 if (this.positions[i] < this.origin.x || this.positions[i] > this.origin.x + this.extents.width ||
                         this.positions[i + 2] < this.origin.y || this.positions[i + 2] > this.origin.y + this.extents.height) {
-
                         // Reset position within the bounds
                         this.positions[i] = this.origin.x + Math.random() * this.extents.width;
                         this.positions[i + 2] = this.origin.y + Math.random() * this.extents.height;
@@ -820,9 +819,6 @@ AFRAME.registerComponent('flow-tracer', {
                     this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
                 }
             
-                
-
-
             }
 
             // handle the trail (update oldest position with newest)
@@ -831,7 +827,7 @@ AFRAME.registerComponent('flow-tracer', {
                 this.trail[start_pi+i] = this.positions[i]  ;
                 this.trail[start_pi+i+1] = this.positions[i + 1] ;
                 this.trail[start_pi+i+2] = this.positions[i + 2] ;
-                this.trail[start_pi+i+3] = this.positions[i + 3] ;
+                this.trail[start_pi+i+3] = this.positions[i + 3]/(this.maxOverallSpeed/3.0) ;
             }
             var start_piv = this.trail_index*this.number_of_particles;
             for (var i = 0; i < this.number_of_particles ; i += 1) {
