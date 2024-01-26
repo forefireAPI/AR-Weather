@@ -124,41 +124,43 @@ AFRAME.registerComponent('text-info', {
 
   init: function () {
     // Create the text entity
-    this.textEl = document.createElement('a-text');
-    this.textEl.setAttribute('value', this.data.defaultText);
-    this.textEl.setAttribute('color', this.el.getAttribute('color') || 'black');
-    this.textEl.setAttribute('position', '0 0 0.01'); // Slightly in front of the parent entity
-    this.textEl.setAttribute('scale', '0.5 0.5 0.5'); // Slightly in front of the parent entity
-    this.el.appendChild(this.textEl);
+    this.barWidth = 0.2;
 
+      
     this.textInfo = document.createElement('a-text');
     this.textInfo.setAttribute('value', "Info");
-    this.textInfo.setAttribute('color', 'green');
-    this.textInfo.setAttribute('position', '0 -0.1 0.1'); // Slightly in front of the parent entity
-    this.textInfo.setAttribute('scale', '1 1 1'); // Slightly in front of the parent entity
+    this.textInfo.setAttribute('color', 'lightgray');
+    this.textInfo.setAttribute('position', '-0.1 0.004 -0.097'); // Slightly in front of the parent entity
+    this.textInfo.setAttribute('scale', '0.04 0.04 0.04'); // Slightly in front of the parent entity
     this.el.appendChild(this.textInfo);
-    
-    var bgplane = document.createElement('a-plane');
-    bgplane.setAttribute('position', '4 -0.25 -0.3'); // Below the text
-    bgplane.setAttribute('width', '9'); // Assuming full width
-    bgplane.setAttribute('height', '0.8'); // 10% of the height
-    bgplane.setAttribute('color', '#AAAAAA');
-    bgplane.setAttribute('material', 'opacity: 0.8');
-    this.el.appendChild(bgplane);
-    // Create the white plane
+ 
+    this.textCredits = document.createElement('a-text');
+    this.textCredits.setAttribute('value', "CNRS/Universita di Corsica - J.B. Filippi");
+    this.textCredits.setAttribute('color', 'lightgray');
+    this.textCredits.setAttribute('position', '-0.1 -0.008 -0.097'); // Slightly in front of the parent entity
+    this.textCredits.setAttribute('scale', '0.02 0.02 0.02'); // Slightly in front of the parent entity
+    this.el.appendChild(this.textCredits);
+      
+    this.textCredits2 = document.createElement('a-text');
+    this.textCredits2.setAttribute('value', "Data - Firecaster/MesoNH - Arome Meteo-France");
+    this.textCredits2.setAttribute('color', 'lightgray');
+    this.textCredits2.setAttribute('position', '-0.001 -0.008 -0.097'); // Slightly in front of the parent entity
+    this.textCredits2.setAttribute('scale', '0.02 0.02 0.02'); // Slightly in front of the parent entity
+    this.el.appendChild(this.textCredits2);    
+      
     var plane = document.createElement('a-plane');
-    plane.setAttribute('position', '4 -0.5 0'); // Below the text
-    plane.setAttribute('width', '8'); // Assuming full width
-    plane.setAttribute('height', '0.3'); // 10% of the height
-    plane.setAttribute('color', '#44FF44');
-    plane.setAttribute('material', 'opacity: 0.5');
+    plane.setAttribute('position', '0 0 -0.1'); // Below the text
+    plane.setAttribute('width', this.barWidth); // Assuming full width
+    plane.setAttribute('height', '0.03'); // 10% of the height
+    plane.setAttribute('color', 'black');
+    plane.setAttribute('material', 'opacity: 1');
     this.el.appendChild(plane);
 
     // Create the red bar
     this.bar = document.createElement('a-plane');
-    this.bar.setAttribute('position', '4 -0.5 0'); // Start at the left, in front of the white plane
-    this.bar.setAttribute('width', '0.1'); // Width of the bar
-    this.bar.setAttribute('height', '0.3');
+    this.bar.setAttribute('position', '0 0 -0.099'); // Start at the left, in front of the white plane
+    this.bar.setAttribute('width', '0.002'); // Width of the bar
+    this.bar.setAttribute('height', '0.03');
     this.bar.setAttribute('color', 'red');
     this.el.appendChild(this.bar);
 
@@ -168,10 +170,10 @@ AFRAME.registerComponent('text-info', {
 
   update: function (oldData) {
     // Update text and progress
-    var textEl = this.el.children[0];
+  /*  var textEl = this.el.children[0];
     if (oldData.defaultText !== this.data.defaultText) {
       textEl.setAttribute('value', this.data.defaultText);
-    }
+    }*/
     if (oldData.progress !== this.data.progress) {
       this.set_progress(this.data.progress);
     }
@@ -179,19 +181,16 @@ AFRAME.registerComponent('text-info', {
 
   set_progress: function (value) {
     // Calculate new position for the red bar based on progress
-    var newPositionX =  8 * value;
-    this.bar.setAttribute('position', {x: newPositionX, y: -0.5, z: 0.002});
-    this.textEl.setAttribute('position', {x: newPositionX, y: -0.5, z: 0.003});
+
+    var newPositionX =  +this.barWidth * value;
+ 
+    this.bar.setAttribute('position', {x: this.barWidth * value -(this.barWidth/2), y: 0, z: -0.099}); 
   },
 
-  update_text: function (newText) {
-    // Method to update the text
-     this.el.children[0].setAttribute('value', newText);
-  },
-    
+ 
   update_info: function (newText) {
     // Method to update the text
-     this.el.children[1].setAttribute('value', newText);
+     this.el.children[0].setAttribute('value', newText);
   }
 });
 
@@ -312,6 +311,9 @@ AFRAME.registerComponent('shoot-controls', {
   }
 });
 
+
+
+
 AFRAME.registerComponent('flow-tracer', {
     
     schema: {
@@ -322,6 +324,7 @@ AFRAME.registerComponent('flow-tracer', {
         raycast_plane: {type: 'boolean', default: true},
         scale: {type: 'number', default: 1000000},
         
+        wireframe: {type: 'boolean', default: false},
         
         datafile: {type: 'string', default: "none"},
         demFile: {type: 'string', default: "none"},
@@ -329,7 +332,8 @@ AFRAME.registerComponent('flow-tracer', {
         demLines: {type: 'number', default: 10},
         demMax: {type: 'number', default: 10},
         demTexture: {type: 'string', default: "none"},
-        dataPointResolution: {type: 'number', default:100}, // one point equals 1000 meters by default
+        dataPointResolutionAlongX: {type: 'number', default:100}, // one point equals 1000 meters by default
+        dataPointResolutionAlongY: {type: 'number', default:100}, // one point equals 1000 meters by default
 
         verticalExageration: {type: 'number', default: 1}
     },
@@ -340,8 +344,8 @@ AFRAME.registerComponent('flow-tracer', {
     this.resolution  = this.data.scale; // one real meter equals this.data.scale meters
     this.dataPointResolution = this.data.dataPointResolution;
     this.maxAltitude = this.data.demMax;
-    this.extents = {width: (this.data.demColumns*this.dataPointResolution)/this.resolution,
-                    height: (this.data.demLines*this.dataPointResolution)/this.resolution}
+    this.extents = {width: (this.data.demColumns*this.data.dataPointResolutionAlongX)/this.resolution,
+                    height: (this.data.demLines*this.data.dataPointResolutionAlongY)/this.resolution}
         ;
     this.origin = {x: -(this.extents.width/2),
            y :-(this.extents.height/2)
@@ -352,7 +356,7 @@ AFRAME.registerComponent('flow-tracer', {
     console.log("Inited Loaded ",this.origin ,this.extents, this.zScaleFactor , this.data.zScaleFactor  );
       // Create terrain entity
     var terrainEntity = document.createElement('a-entity');
-    terrainEntity.setAttribute('terrain-model', `map: ${this.data.demTexture}; dem: ${this.data.demFile}; planeWidth: ${this.extents.width}; planeHeight: ${this.extents.height}; segmentsWidth: ${+this.data.demColumns - 1}; segmentsHeight: ${+this.data.demLines - 1}; zPosition: ${this.data.verticalExageration}; wireframe: false`);
+    terrainEntity.setAttribute('terrain-model', `map: ${this.data.demTexture}; dem: ${this.data.demFile}; planeWidth: ${this.extents.width}; planeHeight: ${this.extents.height}; segmentsWidth: ${+this.data.demColumns - 1}; segmentsHeight: ${+this.data.demLines - 1}; zPosition: ${this.data.verticalExageration}; wireframe: true; alphaMap: url(corte_alpha.png)}`);
 
     // Conditionally set ID based on raycast_plane
     if (this.data.raycast_plane) {
@@ -396,7 +400,7 @@ AFRAME.registerComponent('flow-tracer', {
         })
         .then(content => {
             
-            // Créer une copie profonde des données JSON
+            // Créer une copie profo    nde des données JSON
             this.data2D = JSON.parse(content);
         
             this.data2D.origin = this.origin;
@@ -404,14 +408,14 @@ AFRAME.registerComponent('flow-tracer', {
             this.timeIndices = Object.keys(this.data2D.data);
             this.tickTimeDelta = 0;
             this.tickTime = 0;
-            console.log("Data unzipped load" + this.data2D.altitude[10][10]);
+           
         
             for (var i = 0; i < this.data2D.altitude.length ; i += 1) {
                 for (var j = 0; j < this.data2D.altitude[0].length ; j += 1) {
-                    this.data2D.altitude[i][j] =  (this.data2D.altitude[i][j] ) * this.zScaleFactor + (this.zScaleFactor/20);
+                    this.data2D.altitude[i][j] =  (this.data2D.altitude[i][j] +10) * this.zScaleFactor + (this.zScaleFactor/10);
                 }
             }
-            console.log("Data unzipped after" + this.data2D.altitude[10][10]);
+         
             this.pointsGeometry = new THREE.BufferGeometry();
             this.trail_length = this.data.trail_length;
             this.flowTracerSpeed = this.data.flowTracerSpeed;
@@ -558,7 +562,7 @@ AFRAME.registerComponent('flow-tracer', {
 
             // Set the uniforms for your shader material
             pointsMaterial.uniforms.minClampValue.value = 0;
-            pointsMaterial.uniforms.maxClampValue.value = this.maxOverallSpeed;
+            pointsMaterial.uniforms.maxClampValue.value = this.maxOverallSpeed/2;
             this.points = new THREE.Points(this.pointsGeometry, pointsMaterial);
             this.el.setObject3D('points', this.points);
             console.log(pointsMaterial.uniforms.minClampValue.value,pointsMaterial.uniforms.maxClampValue.value)
@@ -579,8 +583,8 @@ AFRAME.registerComponent('flow-tracer', {
         
             var injectMaterial = new THREE.ShaderMaterial({
                 uniforms: {
-                    size: { value: 8 },
-                    color: { value: new THREE.Color(1.0, 1.0, 0.2) } // Uniform for color
+                    size: { value: 15 },
+                    color: { value: new THREE.Color(1.0, 0.2, 0.2) } // Uniform for color
                 },
                 vertexShader: 
                 `   uniform float size;
@@ -632,7 +636,7 @@ AFRAME.registerComponent('flow-tracer', {
         var newSTR  = getDateTimeString(this.current_time);
     //    newSTR += "\nDt: "+(this.time_step_ms).toFixed(2);
         newSTR += " - One second is "+this.speedups_text[this.speedup_index];
-        newSTR += "\n1m = "+this.resolution+"m - Tracers : "+ this.injectCount+"/"+this.number_of_inject;
+        newSTR += "\n1m="+this.resolution+"m TimeButton A advance, B back";
      //   newSTR += "\ndx: "+this.resolution;
     //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
     //    newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
@@ -649,8 +653,8 @@ AFRAME.registerComponent('flow-tracer', {
             return;
         }
         if (this.injectCount >= this.number_of_inject){
-            //this.injectCount = 0;
-            return;
+            this.injectCount = 0;
+            //return;
         }
         var NX = intersectionPoint.x  ;
         var NY = intersectionPoint.z ;
@@ -747,7 +751,7 @@ AFRAME.registerComponent('flow-tracer', {
         
             
             if (this.text_tracker != null){
-                this.text_tracker.update_text(getDateTimeString(this.current_time));
+                
                 this.text_tracker.set_progress(rTime/this.timeIndices.length);
                 this.update_info(this.getSimulationInfo());
             } 
@@ -764,7 +768,7 @@ AFRAME.registerComponent('flow-tracer', {
 
             
             
-             for (var i = 0; i < this.injectCount * 4; i += 4) {
+             for (var i = 0; i < this.number_of_inject * 4; i += 4) {
                 rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
                 var NX = this.injected[i] + (rloc.u * +this.time_step_ms/1000.0 )/this.resolution;
                 this.injected[i + 1] = rloc.z;
@@ -785,15 +789,24 @@ AFRAME.registerComponent('flow-tracer', {
                 }
             
             
-            
+            var viewSpeedCoeff =  (this.cMaxAps* this.flowTracerSpeed )/this.resolution;
             
             
             for (var i = 0; i < this.number_of_particles * 4; i += 4) {
                
                 rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
+                let new_v = 0 ;
+                let new_u = 0;
                 
-                this.positions[i] += (rloc.u * this.cMaxAps* this.flowTracerSpeed )/this.resolution;
-                this.positions[i + 2] += (rloc.v * this.cMaxAps * this.flowTracerSpeed )/this.resolution;
+                if(this.positions[i+3]>0){   
+                    let scaled_magnitude = Math.pow(this.positions[i+3], 0.3); // 'a' is the power factor, less than 1
+                    new_u =  rloc.u * scaled_magnitude / this.positions[i+3] ;
+                    new_v =  rloc.v * scaled_magnitude / this.positions[i+3] ;
+                }
+                this.positions[i] += new_u * viewSpeedCoeff;
+                this.positions[i + 2] += new_v * viewSpeedCoeff;
+                //this.positions[i] += rloc.u * viewSpeedCoeff;
+                //this.positions[i + 2] += rloc.v * viewSpeedCoeff;
 
 
                 /*if (this.trail_index == 0 ) {
@@ -809,15 +822,15 @@ AFRAME.registerComponent('flow-tracer', {
 
 
                 rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
-                this.positions[i + 1] = rloc.z;
+                this.positions[i + 1] = rloc.z; 
                 this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
-                while (this.positions[i + 3] < Math.random()*0.1 ) {
+            /*    while (this.positions[i + 3] < Math.random()*(this.maxOverallSpeed/3) ) {
                     this.positions[i] = this.origin.x + Math.random() * this.extents.width;
                     this.positions[i + 2] = this.origin.y + Math.random() * this.extents.height;
                     rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
                     this.positions[i + 1] = rloc.z;
                     this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
-                }
+                }*/
             
             }
 
@@ -827,7 +840,7 @@ AFRAME.registerComponent('flow-tracer', {
                 this.trail[start_pi+i] = this.positions[i]  ;
                 this.trail[start_pi+i+1] = this.positions[i + 1] ;
                 this.trail[start_pi+i+2] = this.positions[i + 2] ;
-                this.trail[start_pi+i+3] = this.positions[i + 3]/(this.maxOverallSpeed/3.0) ;
+                this.trail[start_pi+i+3] = this.positions[i + 3]/(this.maxOverallSpeed/5.0) ;
             }
             var start_piv = this.trail_index*this.number_of_particles;
             for (var i = 0; i < this.number_of_particles ; i += 1) {
@@ -836,6 +849,9 @@ AFRAME.registerComponent('flow-tracer', {
                 if (this.ages[i] >  +this.trail_length ) {
                     this.positions[i*4] = this.origin.x + Math.random() * this.extents.width;
                     this.positions[i*4 + 2] = this.origin.y + Math.random() * this.extents.height;
+                    rloc = interpolateAt(this.data2D, this.positions[i*4], this.positions[i*4 + 2],this.timeIndex1,this.timeIndex2,this.rIndices);
+                    this.positions[i*4 + 1] = rloc.z;
+                    this.positions[i*4 + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
                     this.ages[i] = 0;
                 }
             }

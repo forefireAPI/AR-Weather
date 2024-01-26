@@ -320,12 +320,12 @@ def menorData(infilePath="/Users/filippi_j/data/2023/oursins/champs_meno_BE20190
     
     return arrayTo2DTJSON( Z0, U, -V, resolution, tlist, filename=jsonZipBinOut)
     
-
+import cfgrib
 def compilMNH2Json():          
     infilePath="/Users/filippi_j/data/2024/barbaggio/MNHfields/FCAST.3.FIRE.001.nc"
     flowfilePath="/Users/filippi_j/data/2024/barbaggio/MNHfields/compil.nc"
-    altBinOut='/Users/filippi_j/soft/ARflow/bbelevation.bin'
-    jsonZipBinOut="/Users/filippi_j/soft/ARflow/bbtimed2.zip"
+    altBinOut='/Users/filippi_j/soft/ARflow/wind_barbaggio_AR/bbelevation.bin'
+    jsonZipBinOut="/Users/filippi_j/soft/ARflow/wind_barbaggio_AR/bbtimed2.zip"
     
     dsX = FFMNHVTKtoTimedArraync()
     
@@ -343,7 +343,7 @@ def compilMNH2Json():
         array_uint16.tofile(file)
        
     
-    sliceT = 2
+    sliceT = 1
     tlist = list((ds.time[::sliceT].data.astype(int)/1000000).astype(int))
     
     
@@ -379,8 +379,17 @@ def compilMNH2Json():
     A = arrayTo2DTJSON( altBin+10, U, -V, resolution, tlist, filename=jsonZipBinOut)
     
     
+def cep2Json(gribfile="/Users/filippi_j/data/2024/barbaggio/MNHfields/cep.FC00Z.00"):
+# Open the dataset
+    ds = cfgrib.open_datasets(gribfile, engine='cfgrib')
+    return ds
+
+ds = cep2Json()
+
+
+
 #compilMNH2Json()
-menorData()
+#menorData()
     
     
 

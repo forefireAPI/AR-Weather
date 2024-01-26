@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.2.0/dist/aframe-extras.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script src="https://unpkg.com/aframe-terrain-model-component@1.0.1/dist/aframe-terrain-model-component.min.js"></script>
-    <script src="ar-flow.js"></script>
+    <script src="../js/ar-flow.js"></script>https://forefire.univ-corse.fr/firecaster-vr/
 <script>
   // This function prints the position from the entity with movement-controls and the rotation from the camera
   function printPosAndRot() {
@@ -77,27 +77,29 @@
                                demLines: 151; 
                                demMax: 994; 
                                demTexture: url(bbL.jpg); 
-                               dataPointResolution: 80; 
+                               dataPointResolutionAlongX: 80; 
+                               dataPointResolutionAlongY: 80; 
                                verticalExageration: 8"
-                  position="0 0 0">
+                  position="0 1 0">
         </a-entity>
 
-        <a-entity movement-controls="fly: true; speed: 0.1" position="0 1.70 0.5">
+        <a-entity movement-controls="fly: true; speed: 0.1" position="0 1.50 0.5">
             <a-entity camera position="0 0 0" rotation="-75 0 0"></a-entity>
             <a-cursor id="handControl" 
                       laser-controls="hand: right" 
                       shoot-controls
                       raycaster="objects: .raycastable; interval: 200"
                       material="color: black; shader: flat">
-            </a-cursor>
-
-            <a-entity id="timeLabel" 
+                <a-entity id="timeLabel" 
                       text-info="defaultText: Not loaded" 
                       color="black" 
-                      position="-4 2 -5" 
+                      position="0 0.20 0.12" 
                       scale="1 1 1" 
-                      rotation="0 0 0">
-            </a-entity>
+                      rotation="-60 10 00">
+                </a-entity>   
+            </a-cursor>
+ 
+
         </a-entity>
     </a-scene>
 
