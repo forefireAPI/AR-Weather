@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My A-Frame Scene</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.2.0/dist/aframe-extras.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <script src="https://unpkg.com/aframe-terrain-model-component@1.0.1/dist/aframe-terrain-model-component.min.js"></script>
+    <script src="../js/ar-flow.js"></script>https://forefire.univ-corse.fr/firecaster-vr/
+<script>
+  // This function prints the position from the entity with movement-controls and the rotation from the camera
+  function printPosAndRot() {
+    var movementControlEntity = document.querySelector('[movement-controls]');
+    var cameraEl = document.querySelector('a-camera') || document.querySelector('[camera]');
+    
+    if (movementControlEntity && cameraEl) {
+      var position = movementControlEntity.getAttribute('position');
+      var rotation = cameraEl.getAttribute('rotation');
+      console.log(`<a-entity movement-controls="fly: true; speed: 10" position="${position.x} ${position.y} ${position.z}" rotation="${rotation.x} ${rotation.y} ${rotation.z}" look-controls>\n<a-entity camera position="0 0 0" rotation="0 0 0" look-controls></a-entity>\n</a-entity>`);
+    } else {
+      console.error('Required entities not found');
+    }
+  };
+
+  // Example: Call this function when the 'p' key is pressed
+  document.addEventListener('DOMContentLoaded', function() {
+      
+    var sceneEl = document.getElementById('flowview');
+    sceneEl.addEventListener('loaded', function() {
+      
+      var flowTracerComponent = document.getElementById('surface-current').components['flow-tracer'];
+      
+      console.log("Flow ",flowTracerComponent);
+      var TLab = document.getElementById('timeLabel').components['text-info'];
+      flowTracerComponent.setTextTracker(TLab);
+      
+      var CLab = document.getElementById('handControl').components['shoot-controls'];
+      flowTracerComponent.setHandControl(CLab);
+      
+        document.addEventListener('keydown', function(event) {
+
+            if (event.key === 'p') {
+                printPosAndRot();
+                flowTracerComponent.togglePause();
+                console.log("Pausing");
+            };
+            if (event.key === '+') {
+                flowTracerComponent.speedUp();
+            };
+            if (event.key === '-') {
+                flowTracerComponent.speedDown();
+            };
+
+        });
+     });
+  });
+
+    
+</script>
+  </head>
+  <body> 
+    <a-scene id="flowview" arjs='sourceType: webcam; debugUIEnabled: false;'>
+        <!-- renderer="antialias: true" -->
+
+        <a-entity id="surface-current" 
+                  flow-tracer="datafile: alpes.zip; 
+                               number_of_particles: 26000; 
+                               trail_length: 16;
+                               target_advect_per_s: 30; 
+                               flowTracerSpeed:3; 
+                               raycast_plane: false; 
+                               scale: 50000; 
+                               demFile: url(alpes.bin); 
+                                dataPointResolutionAlongX: 791.2995994933453;
+                                dataPointResolutionAlongY: 1103.9565491994347;
+                                demColumns: 200;
+                                demLines: 150;
+                                demMax: 4634;
+                               demTexture: url(alpes.jpg); 
+                               wireflame: false;
+                               verticalExageration: 3"
+                  position="0 1 0">
+        </a-entity>
+   
+        <a-entity movement-controls="fly: true; speed: 0.1" position="0 1.50 0.5">
+            <a-entity camera position="0 0 0" rotation="-75 0 0">
+            </a-entity>
+            <a-cursor id="handControl" 
+                      laser-controls="hand: right" 
+                      shoot-controls
+                      raycaster="objects: .raycastable; interval: 200"
+                      material="color: black; shader: flat"
+                      position="0 1.20 0.12"
+                      >
+                 <a-entity id="timeLabel" 
+                      text-info="defaultText: Not loaded" 
+                      color="black" 
+                      position="0 0.20 0.12" 
+                      scale="1 1 1" 
+                      rotation="-60 10 00">
+                </a-entity>  
+            </a-cursor>
+           </a-entity>
+    </a-scene>
+
+  </body>
+</html>
