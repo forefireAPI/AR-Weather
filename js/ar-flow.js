@@ -325,7 +325,7 @@ AFRAME.registerComponent('flow-tracer', {
         scale: {type: 'number', default: 1000000},
         
         wireframe: {type: 'boolean', default: false},
-        
+        alphaMap: {type: 'string', default: "none"},
         datafile: {type: 'string', default: "none"},
         demFile: {type: 'string', default: "none"},
         demColumns: {type: 'number', default: 10}, 
@@ -334,7 +334,6 @@ AFRAME.registerComponent('flow-tracer', {
         demTexture: {type: 'string', default: "none"},
         dataPointResolutionAlongX: {type: 'number', default:100}, // one point equals 1000 meters by default
         dataPointResolutionAlongY: {type: 'number', default:100}, // one point equals 1000 meters by default
-
         verticalExageration: {type: 'number', default: 1}
     },
     
@@ -356,7 +355,7 @@ AFRAME.registerComponent('flow-tracer', {
     console.log("Inited Loaded ",this.origin ,this.extents, this.zScaleFactor , this.data.zScaleFactor  );
       // Create terrain entity
     var terrainEntity = document.createElement('a-entity');
-    terrainEntity.setAttribute('terrain-model', `map: ${this.data.demTexture}; dem: ${this.data.demFile}; planeWidth: ${this.extents.width}; planeHeight: ${this.extents.height}; segmentsWidth: ${+this.data.demColumns - 1}; segmentsHeight: ${+this.data.demLines - 1}; zPosition: ${this.data.verticalExageration}; wireframe: true; alphaMap: url(corte_alpha.png)}`);
+    terrainEntity.setAttribute('terrain-model', `map: ${this.data.demTexture}; dem: ${this.data.demFile}; planeWidth: ${this.extents.width}; planeHeight: ${this.extents.height}; segmentsWidth: ${+this.data.demColumns - 1}; segmentsHeight: ${+this.data.demLines - 1}; zPosition: ${this.data.verticalExageration}; wireframe: ${this.data.wireframe};alphaMap: ${this.data.alphaMap}}`);
 
     // Conditionally set ID based on raycast_plane
     if (this.data.raycast_plane) {
@@ -408,14 +407,14 @@ AFRAME.registerComponent('flow-tracer', {
             this.timeIndices = Object.keys(this.data2D.data);
             this.tickTimeDelta = 0;
             this.tickTime = 0;
-           
+            console.log("Data unzipped load" + this.data2D.altitude[10][10]);
         
             for (var i = 0; i < this.data2D.altitude.length ; i += 1) {
                 for (var j = 0; j < this.data2D.altitude[0].length ; j += 1) {
                     this.data2D.altitude[i][j] =  (this.data2D.altitude[i][j] +10) * this.zScaleFactor + (this.zScaleFactor/10);
                 }
             }
-         
+            console.log("Data unzipped after" + this.data2D.altitude[10][10]);
             this.pointsGeometry = new THREE.BufferGeometry();
             this.trail_length = this.data.trail_length;
             this.flowTracerSpeed = this.data.flowTracerSpeed;
