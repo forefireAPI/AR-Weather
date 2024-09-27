@@ -379,16 +379,16 @@ def compilMNH2Json():
     A = arrayTo2DTJSON( altBin+10, U, -V, resolution, tlist, filename=jsonZipBinOut)
     
     
-def cep2Json(gribfile="/Users/filippi_j/data/2024/barbaggio/MNHfields/cep.FC00Z.00"):
+#def cep2Json(gribfile="/Users/filippi_j/data/2024/barbaggio/MNHfields/cep.FC00Z.00"):
 # Open the dataset
-    ds = cfgrib.open_datasets(gribfile, engine='cfgrib')
-    return ds
+#    ds = cfgrib.open_datasets(gribfile, engine='cfgrib')
+#    return ds
 
-ds = cep2Json()
+#ds = cep2Json()
 
 
 
-#compilMNH2Json()
+compilMNH2Json()
 #menorData()
     
     

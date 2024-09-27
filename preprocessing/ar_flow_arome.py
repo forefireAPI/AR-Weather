@@ -1,13 +1,12 @@
 import json
 import math
-import cfgrib
 
+import cfgrib
 import vtk
 import xarray as xr
 import zipfile
 import io
-import numpy as np
- 
+import numpy as np 
 def limit_float_precision(obj):
     if isinstance(obj, float):
         return round(obj, 2)
@@ -24,7 +23,7 @@ class CustomEncoder(json.JSONEncoder):
         return super(CustomEncoder, self).iterencode(o, _one_shot)
    
 
-def arrayTo2DTJSON(altitude, u, v,  tlist, filename="None"):
+def arrayTo2DTJSON(altitude, u, v,  tlist, filename="None",temp=None,ffmc=None,bounds=None):
     ni, nj = np.shape(altitude)
     json_structure = {
 
@@ -40,7 +39,9 @@ def arrayTo2DTJSON(altitude, u, v,  tlist, filename="None"):
             "nj": nj
         },
         "altitude": limit_float_precision(altitude.tolist()),
-        "data": {}
+        
+        "data": {},
+        "BBox": bounds
     }
     
     # Adding time frames data to JSON structure
@@ -260,8 +261,7 @@ def menorData(infilePath="/Users/filippi_j/data/2023/oursins/champs_meno_BE20190
     
     
     return arrayTo2DTJSON( Z0, U, -V, resolution, tlist, filename=jsonZipBinOut)
-    
-import cfgrib
+     
 def compilMNH2Json():          
     infilePath="/Users/filippi_j/data/2024/barbaggio/MNHfields/FCAST.3.FIRE.001.nc"
     flowfilePath="/Users/filippi_j/data/2024/barbaggio/MNHfields/compil.nc"
@@ -453,28 +453,44 @@ def calculate_dimensions(bounds):
 def getDataDict(run_path,searchKey="*.grib2"):
     out_data_files = {}
     sorted_files = sorted(glob.glob(run_path +searchKey))
-   # print("available",sorted_files)
-    for file_path in sorted_files:
-        basename = os.path.basename(file_path)
-        date_str, time_str, delta_str = basename.split('.')[:3]  # Splitting the filename
-        delta_hours = int(delta_str.replace('H', ''))  # Extracting the delta hours
-    
-        # Adjust the format in strptime to match the concatenated string
-        datetime_obj = datetime.strptime(date_str + time_str.replace('Z', ''), '%Y%m%d%H') + timedelta(hours=delta_hours)
-    
-        out_data_files[datetime_obj] = file_path
-    return out_data_files
+    print("Files Found : ",sorted_files[0])
+    if "grib2" in sorted_files[0]:
+        print("Running AROME")
+        for file_path in sorted_files:
+            basename = os.path.basename(file_path)
+            date_str, time_str, delta_str = basename.split('.')[:3]  # Splitting the filename
+            delta_hours = int(delta_str.replace('H', ''))  # Extracting the delta hours
+        
+            # Adjust the format in strptime to match the concatenated string
+            datetime_obj = datetime.strptime(date_str + time_str.replace('Z', ''), '%Y%m%d%H') + timedelta(hours=delta_hours)
+        
+            out_data_files[datetime_obj] = file_path
+        return out_data_files
+    if "cep" in sorted_files[0]:
+        print("Running CEP")
+        for file_path in sorted_files:
+            ds = cfgrib.open_datasets(file_path, engine='cfgrib')
+            dtimeL = pd.to_datetime(ds[0].valid_time.values).to_pydatetime()
+            print("Time IS ", dtimeL,ds[0].valid_time.values)
+            #ds.close()
+            out_data_files[dtimeL] = file_path
+        return out_data_files
+    print("Running Failed")
+    return[]  
 
 
 
-def aromeRunToXarrayNC(runPath, bounds ,ncout_fname=None):
-    
-    run_fnames = getDataDict(runPath,searchKey="*.SP1.grib2")
-    
+def aromeRunToXarrayNC(runPath, bounds , searchKey,ncout_fname=None,):
+   
+    run_fnames = getDataDict(runPath,searchKey=searchKey)
+ 
     first = list(run_fnames.keys())[0]
     ds = cfgrib.open_datasets(run_fnames[first], engine='cfgrib')
-    aroSS = ds[0].sel(latitude=slice(bounds['N'], bounds['S']), longitude=slice(bounds['W'], bounds['E']))
-    print("for " ,bounds," shape is ",aroSS.u10.shape)
+    
+    indexu10 = next((i for i, ds in enumerate(ds) if 'u10' in ds.variables), None)
+    aroSS = ds[indexu10].sel(latitude=slice(bounds['N'], bounds['S']), longitude=slice(bounds['W'], bounds['E']))
+    
+    print(bounds," for " ,bounds," shape is ",aroSS.u10.shape)
   
     
     times = [pd.Timestamp(t) for t in run_fnames.keys()]
@@ -495,7 +511,7 @@ def aromeRunToXarrayNC(runPath, bounds ,ncout_fname=None):
     for ltime in run_fnames.keys():
         print("reading", run_fnames[ltime])
         ds = cfgrib.open_datasets(run_fnames[ltime], engine='cfgrib')
-        aroSS = ds[0].sel(latitude=slice(bounds['N'], bounds['S']), longitude=slice(bounds['W'], bounds['E']))
+        aroSS = ds[indexu10].sel(latitude=slice(bounds['N'], bounds['S']), longitude=slice(bounds['W'], bounds['E']))
         
         # Find the corresponding time index
         time_index = XarrayU.coords['time'].to_index().get_loc(pd.Timestamp(ltime))
@@ -512,7 +528,7 @@ def aromeRunToXarrayNC(runPath, bounds ,ncout_fname=None):
 
 #aromeRunToXarrayNC(run_path, bounds ,nc_aro_out)
 
-def arome2Json(demXray,  jsonZipBinOut, altBinOut, bounds=None, nc_aro=None, nc_aro_out=None, runPath=None ):    
+def arome2Json(demXray,  jsonZipBinOut, altBinOut, bounds=None, nc_aro=None, nc_aro_out=None, runPath=None ,searchKey="*.SP1.grib2"):    
     ds = None      
     if nc_aro is not None:
         # Load dataset from netCDF file if nc_aro_out is provided
@@ -520,7 +536,7 @@ def arome2Json(demXray,  jsonZipBinOut, altBinOut, bounds=None, nc_aro=None, nc_
     elif runPath is not None:
         if bounds is not None:
         # Generate dataset using aromeRunToXarrayNC if runPath is provided
-            ds = aromeRunToXarrayNC(runPath, bounds, ncout_fname=nc_aro_out)
+            ds = aromeRunToXarrayNC(runPath, bounds, searchKey,ncout_fname=nc_aro_out)
     else:
         # Return or handle the case where neither nc_aro_out nor runPath is provided
         return
@@ -540,7 +556,7 @@ def arome2Json(demXray,  jsonZipBinOut, altBinOut, bounds=None, nc_aro=None, nc_
     new_lon = np.linspace(subsetDEM.longitude.min(), subsetDEM.longitude.max(), nlon)
     subsetDEM_interpolated = subsetDEM.interp(latitude=new_lat, longitude=new_lon)
     
-    
+ 
     aro_d = calculate_dimensions(aro_bounds)
     nlat, nlon = ds.U[0].shape
     dataPointResolutionAlongX = aro_d["width"] / nlon
@@ -549,14 +565,17 @@ def arome2Json(demXray,  jsonZipBinOut, altBinOut, bounds=None, nc_aro=None, nc_
     
     resolution = (dataPointResolutionAlongX+dataPointResolutionAlongY)/2
     array_uint16 = np.flipud(np.abs(subsetDEM_interpolated.data).astype(np.uint16))
-                             
+    
+    nlatHRES, nlonHRES = subsetDEM.shape              
+    array_uint16_HD = np.flipud(np.abs(subsetDEM.data*0.9).astype(np.uint16))
+    
     
     print(f"dataPointResolutionAlongX: {dataPointResolutionAlongX};\ndataPointResolutionAlongY: {dataPointResolutionAlongY};")
     print(f"demColumns: {nlon};")
     print(f"demLines: {nlat};")
+    print(f"dataColumns: {nlon};")
+    print(f"dataLines: {nlat};")
     print(f"demMax: {np.max(array_uint16)};")
-
-
 
     
     with open(altBinOut, 'wb') as file:
@@ -586,42 +605,56 @@ def arome2Json(demXray,  jsonZipBinOut, altBinOut, bounds=None, nc_aro=None, nc_
     
 
     
-    A = arrayTo2DTJSON( altBin+10, U, -V, tlist, filename=jsonZipBinOut)
+    A = arrayTo2DTJSON( altBin+10, U, -V, tlist, filename=jsonZipBinOut,bounds=aro_bounds)
     
     return aro_bounds
-
-
-
-
 
 
 srtmdirin = '/Users/filippi_j/soft/Meso-NH/PGD/srtm_ne_250.dir'
 srtmhdrin = '/Users/filippi_j/soft/Meso-NH/PGD/srtm_ne_250.hdr'
 run_path = '/Users/filippi_j/data/2024/20240125/06Z/'
-run_path = '/Users/filippi_j/Volumes/dataorsu/AROME/20240130/00Z/'
+run_path = '/Users/filippi_j/Volumes/dataorsu/AROME/20240416/03Z/'
 
-casename = "alpes"
-dataout = f"/Users/filippi_j/soft/ARflow/forecast/{casename}.zip"
-elevationout = f"/Users/filippi_j/soft/ARflow/forecast/{casename}.bin"
-BGImageout = f"/Users/filippi_j/soft/ARflow/forecast/{casename}.tif"
-nc_aro_fname = f"/Users/filippi_j/soft/ARflow/forecast/{casename}.nc"
+
+
+#srtmdirin = '/Users/filippi_j/soft/Meso-NH/PGD/auDEM.dir'
+#srtmhdrin = '/Users/filippi_j/soft/Meso-NH/PGD/auDEM.hdr'
+#run_path = '/Users/filippi_j/data/2024/20240125/06Z/'
+#run_path = '//Users/filippi_j/data/2024/ballarat/2024022112//'
+run_path = '/Users/filippi_j/data/2024/porquerolles/2024060215Z/'
+run_path = '/Users/filippi_j/data/2024/liban/20240904/'
+
+casename = "liban"
+
+dataout = f"/Users/filippi_j/soft/ARflow/tile/{casename}.zip"
+elevationout = f"/Users/filippi_j/soft/ARflow/tile/{casename}.bin"
+BGImageout = f"/Users/filippi_j/soft/ARflow/tile/{casename}.tif"
+nc_aro_fname = f"/Users/filippi_j/soft/ARflow/tile/{casename}.nc"
 
 bounds = {}
-
-bounds["corsica"]={'W': 8,'S': 41.2,'E':10,'N':43.3}
-
-bounds["portovecchio"]={'W': 9,'S': 41.4,'E':9.4,'N':41.8}
-
-bounds["ajaccio"]={'W': 8.5,'S': 41.6,'E':9.2,'N':42.2 }
-
-bounds["corti"]={'W': 9.10,'S': 42.27,'E':9.2,'N':42.34}
-
-bounds["alpes"]={'W': 5.5,'S': 44.5,'E':7.5,'N':46.0}
+bounds["porquerolles"]={'W': 5.73,'S': 42.89,'E':6.63,'N':43.60}
 
 
+# bounds["corsica"]={'W': 8,'S': 41.2,'E':10,'N':43.3}
 
-gen_background_zoom = 12 
-gen_from_nc = True
+# bounds["portovecchio"]={'W': 9,'S': 41.4,'E':9.4,'N':41.8}
+
+# bounds["ajaccio"]={'W': 8.5,'S': 41.6,'E':9.2,'N':42.2 }
+
+# bounds["corti"]={'W': 9.10,'S': 42.27,'E':9.2,'N':42.34}
+
+# bounds["alpes"]={'W': 5.5,'S': 44.5,'E':7.5,'N':46.0}
+
+# bounds["bastia"]={'W': 8.995247570916648,'S': 42.37824111507309,'E':10.004752429083352,'N':43.119965811286725}
+# bounds["tarbes"]={'W': -0.4,'S': 42.75,'E':0.4,'N':43.5}
+# bounds["prunelli"]={'W': 9,'S': 41.8,'E':9.7,'N':42.5}
+
+bounds["centre"]={'W': 8.4,'S': 41.7,'E':9.65,'N':42.7}
+  
+#bounds["liban"]={'W': 33.5,'S': 42.89,'E':36.63,'N':43.60}#{'W': 33.5,'S': 35,'E':37,'N':34.5}
+ 
+gen_background_zoom = 12
+gen_from_nc = False
 
 dsDem = dirHDRtoXarray(srtmdirin, srtmhdrin, replaceNoDataValue=0)
 
@@ -629,21 +662,24 @@ dsDem = dirHDRtoXarray(srtmdirin, srtmhdrin, replaceNoDataValue=0)
 if gen_from_nc:
     aro_bounds = arome2Json(dsDem,  dataout, elevationout, bounds = bounds[casename],nc_aro=nc_aro_fname,  nc_aro_out=None, runPath=None )
 else:
-    aro_bounds = arome2Json(dsDem,  dataout, elevationout, bounds = bounds[casename],nc_aro=None,  nc_aro_out=nc_aro_fname, runPath=run_path )
+    aro_bounds = arome2Json(dsDem,  dataout, elevationout, bounds = bounds[casename],nc_aro=None,  nc_aro_out=nc_aro_fname, runPath=run_path ,searchKey="*")
 
+#aro_bounds = {'N': -36.04000000000015, 'S': -38.92000000000026, 'E': 146.97000000000045, 'W': 142.02000000000027}
+print(aro_bounds)
+#aro_bounds=bounds["corte"]
+# #aro_bounds = {'N': 42.59000000000255, 'S': 41.900000000002684, 'E': 9.449999999999632, 'W': 8.809999999999645}
+# print(aro_bounds)
 if gen_background_zoom > 5:
+#    webMapsToTif(aro_bounds['W'], aro_bounds['S'], aro_bounds['E'], aro_bounds['N'], BGImageout, providerSRC=cx.providers.OpenStreetMap.Mapnik, zoomLevel=gen_background_zoom)
+
     webMapsToTif(aro_bounds['W'], aro_bounds['S'], aro_bounds['E'], aro_bounds['N'], BGImageout, providerSRC=cx.providers.GeoportailFrance.orthos, zoomLevel=gen_background_zoom)
 
-# Example usage
+# # Example usage
+# #3 - make the cut in the dir/HDR
+# #4 - extract the data with CFGRIB
 
-#3 - make the cut in the dir/HDR
-#4 - extract the data with CFGRIB
-
-
-
-
-#compilMNH2Json()
-#menorData()
+# #compilMNH2Json()
+# #menorData() 
     
     
 

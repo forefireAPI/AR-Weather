@@ -1,4 +1,54 @@
+function transformLatLonToPoint(lat, lon, bbox, origin, extents) {
+    // Calculate scale factors
+    const scaleX = extents.width / (bbox.E - bbox.W);
+    const scaleY = extents.height / (bbox.N - bbox.S);
 
+    // Translate lat, lon to x, y in the new coordinate system
+    const x = origin.x + (lon - bbox.W) * scaleX;
+    const y = origin.y + (bbox.N - lat) * scaleY; // Subtract from N to invert the Y axis
+
+    return { x, y };
+}
+function formatDateForPath(date) {
+    // Format date as "YYYY-MM-DD_HH-MM-SS"
+    return date.toISOString()
+               .replace(/:\d\d\.\d+Z$/, '') // Removes seconds fraction and Z
+               .replace(/:/g, '-') // Replaces remaining colons with hyphens
+               .replace('T', '_'); // Replaces T with underscore
+}
+
+function formatDateForDateParam(date) {
+    // Format date as "YYYY-MM-DDTHH:MM:SSZ", removing milliseconds
+    return date.toISOString().replace(/\.\d+Z$/, 'Z');
+}
+function transformPointToLatLon(x, y, bbox, origin, extents) {
+    // Calculate scale factors
+    const scaleX = extents.width / (bbox.E - bbox.W);
+    const scaleY = extents.height / (bbox.N - bbox.S);
+
+    // Reverse translate x, y to lat, lon in the original coordinate system
+    const lon = ((x - origin.x) / scaleX) + bbox.W;
+    const lat = bbox.N - ((y - origin.y) / scaleY);
+
+    return { lat, lon };
+}
+function encodeCoordinate(lat, lng) {
+    let encode = (value) => {
+        let encoded = '';
+        let v = Math.floor(value < 0 ? ~(value << 1) : (value << 1));
+        while (v >= 0x20) {
+            encoded += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+            v >>= 5;
+        }
+        encoded += String.fromCharCode(v + 63);
+        return encoded;
+    };
+
+    let latCode = encode(Math.round(lat * 1e5));
+    let lngCode = encode(Math.round(lng * 1e5));
+
+    return latCode + lngCode;
+}
 
 function getDateTimeString(timeInMilliseconds) {
     // Create a new Date object using the provided timestamp
@@ -57,8 +107,40 @@ function interpolateAt(s_field, x, y,timeIndex1, timeIndex2, rIndices) {
         u: interpolate(U1)*rIndices+interpolate(U2)*(1-rIndices),
         v: interpolate(V1)*rIndices+interpolate(V2)*(1-rIndices)
     };
-}    
-function interpolate2DFiels(s_field, x, y,timeIndex) {
+} 
+function interpolateRunoffAt(s_field, x, y, timeIndex) {
+    // Destructuring to get origin, extents, and altitude
+    const { origin, extents, altitude } = s_field;
+
+    // Calculate indices and fractional parts for interpolation
+    const fx = ((x - origin.x) / extents.width) * (altitude.length - 1);
+    const fy = ((y - origin.y) / extents.height) * (altitude[0].length - 1);
+    const ix1 = Math.floor(fx);
+    const iy1 = Math.floor(fy);
+    const ix2 = Math.min(ix1 + 1, altitude.length - 1);
+    const iy2 = Math.min(iy1 + 1, altitude[0].length - 1);
+    const fracX = fx - ix1;
+    const fracY = fy - iy1;
+
+    if (ix1 < 0 || ix2 >= altitude.length || iy1 < 0 || iy2 >= altitude[0].length) {
+        return { z: 0, steepestSlopeU: 0, steepestSlopeV: 0 };
+    }
+
+    // Inline bilinear interpolation for altitude
+    const interpolateAltitude = (matrix) =>
+        (1 - fracX) * ((1 - fracY) * matrix[ix1][iy1] + fracY * matrix[ix1][iy2]) +
+        fracX * ((1 - fracY) * matrix[ix2][iy1] + fracY * matrix[ix2][iy2]);
+
+    // Calculate the altitude at the given x, y
+    const alt = interpolateAltitude(altitude);
+
+    // Calculate gradients in the x and y directions
+    const dzdx = 10*(altitude[ix2][iy1] - altitude[ix1][iy1]) / (extents.width / (altitude.length - 1));
+    const dzdy = 10*(altitude[ix1][iy2] - altitude[ix1][iy1]) / (extents.height / (altitude[0].length - 1));
+
+    return { z:alt, u: -dzdx, v: -dzdy };
+}
+/*function interpolate2DFiels(s_field, x, y,timeIndex) {
     // Destructuring to get origin, extents, and altitude
     const { origin, extents, altitude } = s_field;
 
@@ -87,7 +169,7 @@ function interpolate2DFiels(s_field, x, y,timeIndex) {
         u: interpolate(U),
         v: interpolate(V)
     };
-}
+}*/
 
 
 AFRAME.registerComponent('play-component', {
@@ -116,6 +198,12 @@ AFRAME.registerComponent('play-component', {
     }
 });
 
+const LAGRANGIAN = 0; 
+const FIRECASTER = 1; 
+const RAIN = 2;
+const firecasterAPI = 'https://forefire.univ-corse.fr/twin/simapi/forefireAPI.php?';
+
+
 AFRAME.registerComponent('text-info', {
   schema: {
     defaultText: { default: 'Default Text' },
@@ -135,14 +223,14 @@ AFRAME.registerComponent('text-info', {
     this.el.appendChild(this.textInfo);
  
     this.textCredits = document.createElement('a-text');
-    this.textCredits.setAttribute('value', "CNRS/Universita di Corsica - J.B. Filippi");
+    this.textCredits.setAttribute('value', "UNITI - Squadra Ardente");
     this.textCredits.setAttribute('color', 'lightgray');
     this.textCredits.setAttribute('position', '-0.1 -0.008 -0.097'); // Slightly in front of the parent entity
     this.textCredits.setAttribute('scale', '0.02 0.02 0.02'); // Slightly in front of the parent entity
     this.el.appendChild(this.textCredits);
       
     this.textCredits2 = document.createElement('a-text');
-    this.textCredits2.setAttribute('value', "Data - Firecaster/MesoNH - Arome Meteo-France");
+    this.textCredits2.setAttribute('value', "Open-Data - Arome Meteo-France");
     this.textCredits2.setAttribute('color', 'lightgray');
     this.textCredits2.setAttribute('position', '-0.001 -0.008 -0.097'); // Slightly in front of the parent entity
     this.textCredits2.setAttribute('scale', '0.02 0.02 0.02'); // Slightly in front of the parent entity
@@ -163,9 +251,28 @@ AFRAME.registerComponent('text-info', {
     this.bar.setAttribute('height', '0.03');
     this.bar.setAttribute('color', 'red');
     this.el.appendChild(this.bar);
-
+      
+    // Create the sim bar
+    this.simbar = document.createElement('a-plane');
+    this.simbar.setAttribute('position', '0 0 -0.099'); // Start at the left, in front of the white plane
+    this.simbar.setAttribute('width', '0.005'); // Width of the bar
+    this.simbar.setAttribute('height', '0.03');
+    this.simbar.setAttribute('color', 'blue');
+    this.el.appendChild(this.simbar);
+      
+    // Create the sim bar
+    this.simMinbar = document.createElement('a-plane');
+    this.simMinbar.setAttribute('position', '0 0 -0.099'); // Start at the left, in front of the white plane
+    this.simMinbar.setAttribute('width', '0.005'); // Width of the bar
+    this.simMinbar.setAttribute('height', '0.03');
+    this.simMinbar.setAttribute('color', 'yellow');
+    this.el.appendChild(this.simMinbar);  
+    
+      
     // Update the position of the red bar based on progress
     this.set_progress(this.data.progress);
+    this.set_simmaxtime(this.data.simMaxTime);
+    this.set_simmintime(this.data.simMinTime);
   },
 
   update: function (oldData) {
@@ -174,7 +281,7 @@ AFRAME.registerComponent('text-info', {
     if (oldData.defaultText !== this.data.defaultText) {
       textEl.setAttribute('value', this.data.defaultText);
     }*/
-    if (oldData.progress !== this.data.progress) {
+     if (oldData.progress !== this.data.progress) {
       this.set_progress(this.data.progress);
     }
   },
@@ -185,8 +292,21 @@ AFRAME.registerComponent('text-info', {
     var newPositionX =  +this.barWidth * value;
  
     this.bar.setAttribute('position', {x: this.barWidth * value -(this.barWidth/2), y: 0, z: -0.099}); 
-  },
+  },  
+    set_simmaxtime: function (value) {
+    // Calculate new position for the red bar based on progress
 
+    var newPositionX =  +this.barWidth * value;
+ 
+    this.simbar.setAttribute('position', {x: this.barWidth * value -(this.barWidth/2), y: 0, z: -0.099}); 
+  },
+    set_simmintime: function (value) {
+    // Calculate new position for the red bar based on progress
+
+    var newPositionX =  +this.barWidth * value;
+ 
+    this.simMinbar.setAttribute('position', {x: this.barWidth * value -(this.barWidth/2), y: 0, z: -0.099}); 
+  },
  
   update_info: function (newText) {
     // Method to update the text
@@ -268,8 +388,13 @@ AFRAME.registerComponent('shoot-controls', {
     if (buttonId === 0 && buttonStates.pressed) {
       this.handleTriggerPress();
     }
+    if (buttonId === 1 && buttonStates.pressed) {
+        this.flow_tracer.switchInteractionMode();
+ 
+    }
+    
   },
-
+ 
   handleTriggerPress: function() {
   // Access the raycaster component
   var raycasterEl = this.el.components.raycaster;
@@ -324,12 +449,13 @@ AFRAME.registerComponent('flow-tracer', {
         raycast_plane: {type: 'boolean', default: true},
         scale: {type: 'number', default: 1000000},
         
-        wireframe: {type: 'boolean', default: false},
         alphaMap: {type: 'string', default: "none"},
         datafile: {type: 'string', default: "none"},
         demFile: {type: 'string', default: "none"},
         demColumns: {type: 'number', default: 10}, 
         demLines: {type: 'number', default: 10},
+        dataColumns: {type: 'number', default: 10}, 
+        dataLines: {type: 'number', default: 10},
         demMax: {type: 'number', default: 10},
         demTexture: {type: 'string', default: "none"},
         dataPointResolutionAlongX: {type: 'number', default:100}, // one point equals 1000 meters by default
@@ -343,8 +469,8 @@ AFRAME.registerComponent('flow-tracer', {
     this.resolution  = this.data.scale; // one real meter equals this.data.scale meters
     this.dataPointResolution = this.data.dataPointResolution;
     this.maxAltitude = this.data.demMax;
-    this.extents = {width: (this.data.demColumns*this.data.dataPointResolutionAlongX)/this.resolution,
-                    height: (this.data.demLines*this.data.dataPointResolutionAlongY)/this.resolution}
+    this.extents = {width: (this.data.dataColumns*this.data.dataPointResolutionAlongX)/this.resolution,
+                    height: (this.data.dataLines*this.data.dataPointResolutionAlongY)/this.resolution}
         ;
     this.origin = {x: -(this.extents.width/2),
            y :-(this.extents.height/2)
@@ -355,7 +481,7 @@ AFRAME.registerComponent('flow-tracer', {
     console.log("Inited Loaded ",this.origin ,this.extents, this.zScaleFactor , this.data.zScaleFactor  );
       // Create terrain entity
     var terrainEntity = document.createElement('a-entity');
-    terrainEntity.setAttribute('terrain-model', `map: ${this.data.demTexture}; dem: ${this.data.demFile}; planeWidth: ${this.extents.width}; planeHeight: ${this.extents.height}; segmentsWidth: ${+this.data.demColumns - 1}; segmentsHeight: ${+this.data.demLines - 1}; zPosition: ${this.data.verticalExageration}; wireframe: ${this.data.wireframe};alphaMap: ${this.data.alphaMap}}`);
+    terrainEntity.setAttribute('terrain-model', `map: ${this.data.demTexture}; dem: ${this.data.demFile}; planeWidth: ${this.extents.width}; planeHeight: ${this.extents.height}; segmentsWidth: ${+this.data.demColumns - 1}; segmentsHeight: ${+this.data.demLines - 1}; zPosition: ${this.data.verticalExageration}; alphaMap: ${this.data.alphaMap}`);
 
     // Conditionally set ID based on raycast_plane
     if (this.data.raycast_plane) {
@@ -403,6 +529,7 @@ AFRAME.registerComponent('flow-tracer', {
             this.data2D = JSON.parse(content);
         
             this.data2D.origin = this.origin;
+            
             this.data2D.extents = this.extents;
             this.timeIndices = Object.keys(this.data2D.data);
             this.tickTimeDelta = 0;
@@ -419,10 +546,22 @@ AFRAME.registerComponent('flow-tracer', {
             this.trail_length = this.data.trail_length;
             this.flowTracerSpeed = this.data.flowTracerSpeed;
             this.cMaxAps =   1000.0/this.data.target_advect_per_s;
-            this.speedups_values = [-3600*24*7,-3600*24*2,-3600*24,-3600*3,-3600, -600,-60,-10, -1, 0, 1, 10, 60, 600, 3600, 3600*3, 3600*24,3600*48,3600*24*7];
-            this.speedups_text = ["a week back","2 days back","a day back","3 hours back","an hour back",  "10 minutes back","a minute back", "10 seconds back", "a second back", "nothing", "a second", "10 seconds","a minute", "10 minutes", "an hour", "3 hours", "a day","2 days","a week"];
-            this.speedup_index = 10;
+            //this.speedups_values = [-3600*24*7,-3600*24*2,-3600*24,-3600*3,-3600, -600,-60,-10, -1, 0, 1, 10, 60, 600, 3600, 3600*3, 3600*24,3600*48,3600*24*7];
+            //this.speedups_text = ["a week back","2 days back","a day back","3 hours back","an hour back",  "10 minutes back","a minute back", "10 seconds back", "a second back", "nothing", "a second", "10 seconds","a minute", "10 minutes", "an hour", "3 hours", "a day","2 days","a week"];
+            
+            this.speedups_values = [-3600, -600,-60, 0, 60, 600, 3600];
+            this.speedups_text = ["an hour back",  "10 minutes back","a minute back","nothing", "a minute", "10 minutes","an hour"];
+            
+            this.speedup_index = 3;
         
+            this.interactionMode = FIRECASTER;
+            
+            // FIRE SIMULATION STUFFFFF
+            this.fcastPath = 0
+            this.currentSimUpdateDuration = 0;
+            this.simRefreshDelta = 1000;
+            this.interactionPossible = true;
+                
             this.sim_speedup = this.speedups_values[this.speedup_index];
         
             this.time_step_ms = this.sim_speedup*this.cMaxAps;
@@ -434,6 +573,8 @@ AFRAME.registerComponent('flow-tracer', {
             this.end_time = this.timeIndices[this.timeIndices.length-1];
             this.timeIndices_delta = this.timeIndices[1]-this.timeIndices[0];
             this.current_time = this.timeIndices[0];
+            this.simMaxTime = this.current_time;
+            this.simMinTime = this.current_time;
             this.timeIndex1 = +this.initial_time;
             this.timeIndex2 = +this.initial_time+ +this.timeIndices_delta;
             this.value_bounds = this.data2D.value_bounds;
@@ -477,7 +618,7 @@ AFRAME.registerComponent('flow-tracer', {
                         this.trail[start_pi+i] = this.positions[i];
                         this.trail[start_pi+i + 1] = this.positions[i+1];
                         this.trail[start_pi+i + 2] = this.positions[i+2];
-                        this.trail[start_pi+i + 3] = 1.0;//this.positions[i+3];
+                        this.trail[start_pi+i + 3] = 20.0;//this.positions[i+3];
                         this.trailvalues[start_pi/4+i/4] = this.positions[i+3];
                     }
             }
@@ -565,16 +706,17 @@ AFRAME.registerComponent('flow-tracer', {
             this.points = new THREE.Points(this.pointsGeometry, pointsMaterial);
             this.el.setObject3D('points', this.points);
             console.log(pointsMaterial.uniforms.minClampValue.value,pointsMaterial.uniforms.maxClampValue.value)
+            
+            this.fireParts = {};
         
         
-        
-            this.number_of_inject = 1000;
+            this.number_of_inject = 5000;
             this.injected = new Float32Array(this.number_of_inject * 4); // 4 vertices per point
             for (var i = 0; i < this.number_of_inject * 4; i += 4) {
                 this.injected[i] = this.origin.x ;
                 this.injected[i + 2] = this.origin.y ;
-                rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+1],this.timeIndex1,this.timeIndex2,this.rIndices);
-                this.injected[i + 1] = rloc.z+1;
+                rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
+                this.injected[i + 1] = rloc.z;
                 this.injected[i + 3] = 1;
             }
         
@@ -631,47 +773,275 @@ AFRAME.registerComponent('flow-tracer', {
 
     },
     
+    setInjectionColor: function(red, green, blue) {
+        // Ensure that this.injectPoints and the material uniforms are properly defined
+        if (this.injectPoints && this.injectPoints.material && this.injectPoints.material.uniforms.color) {
+            this.injectPoints.material.uniforms.color.value.setRGB(red, green, blue);
+        }
+    },
+    
     getSimulationInfo: function() {
         var newSTR  = getDateTimeString(this.current_time);
     //    newSTR += "\nDt: "+(this.time_step_ms).toFixed(2);
         newSTR += " - One second is "+this.speedups_text[this.speedup_index];
-        newSTR += "\n1m="+this.resolution+"m TimeButton A advance, B back";
-     //   newSTR += "\ndx: "+this.resolution;
-    //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
+        newSTR += "\n1m="+this.resolution+"m A fast B slow ";
+     //
+        if (this.interactionMode == LAGRANGIAN ){
+        newSTR += "trigger SMOKE";
+            
+        }
+        if (this.interactionMode == FIRECASTER ){
+        newSTR += "trigger FIRE";
+            
+        }
+        if (this.interactionMode == RAIN ){
+        newSTR += "trigger RAIN";
+            
+        }
+
+        //    newSTR += "\nFPS "+(1000.0/this.tickTimeDelta).toFixed(2);
     //    newSTR += "\ntdelt "+(this.tickTimeDelta/1000.0).toFixed(2);
     //    newSTR += "\nTtime "+(this.currentAdvDuration).toFixed(2);
     //    newSTR += "\nIs "+(this.cMaxAps).toFixed(2);
         return newSTR;
     },
-    
+    loadFirePartsIntoInjected: function() {
+        let index = 0; // Index for the this.injected array
+
+        // Convert current_time to a Date object for comparison
+        const currentTime = new Date(this.current_time);
+
+        // Filter keys earlier than current_time and sort them in descending order
+        const keys = Object.keys(this.fireParts)
+                            .filter(key => new Date(key) < currentTime)
+                            .sort((a, b) => new Date(b) - new Date(a)); // Descending order
+        for (var i = 0; i < this.number_of_inject * 4; i += 4) {
+                this.injected[i] = this.origin.x ;
+                this.injected[i + 2] = this.origin.y ;
+        }
+        for (let key of keys) { // Iterate over each key
+            const points = this.fireParts[key]; // Get the list of points for this key
+            for (let point of points) { // Iterate over each point
+                if (index < this.injected.length - 4) { // Check if there's enough space left
+                    this.injected[index] = point.x;
+                    this.injected[index + 2] = point.y;
+                    // Assuming z+1 logic is needed for every point
+
+                    let rloc = interpolateAt(this.data2D, this.injected[index], this.injected[index+2], this.timeIndex1, this.timeIndex2, this.rIndices);
+                    this.injected[index + 1] = rloc.z +0.001;
+                    this.injected[index + 3] = 1; // w component
+                    index += 4;
+                } else {
+                    console.warn("Injected array is full, some points may not be loaded.");
+                    break; // Exit if there's no space left
+                }
+            }
+        }
+    },
     injectParticleIJ: function(i,j) { 
     },
+    switchInteractionMode: function() { 
+        
+          if(this.interactionPossible == false){
+           return;
+       }
+        this.interactionPossible = false;
+        
+            if (this.interactionMode == FIRECASTER){
+                 this.interactionMode = LAGRANGIAN;
+                  this.setInjectionColor(0.9, 0.9, 0.9);
+            }else{
+                if (this.interactionMode == LAGRANGIAN){
+                    this.interactionMode = RAIN;
+                   this.setInjectionColor(0.1, 0.1, 1.0);
+                }else{
+                    if (this.interactionMode == RAIN){
+                        this.interactionMode = FIRECASTER;
+                          this.setInjectionColor(1.0, 0.5, 0.1);
+                    }
+                }
+            
+            }
+ 
+    },
+    loadFireAsync: function(){
+        
+        
+     
+        
+    fetch(firecasterAPI+'command=getCompiledState&path='+this.fcastPath+'&element=fronts&indice=all&apikey=null') // Make sure the path to hurray.json is correct
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok.');
+            }
+            return response.json(); // Use .json() for JSON data
+        })
+        .then(data => {
+            // Modified parseCoordinates to project each point
+            const parseCoordinates = (coordinatesString, bbox, origin, extents) => {
+              return coordinatesString.split(' ').map(coord => {
+                const [lon, lat, z] = coord.split(',').map(parseFloat); // Assuming lon,lat order in the string
+                // Project the lat, lon to the new coordinate system
+                return transformLatLonToPoint(lat, lon, bbox, origin, extents);
+                 
+              });
+            };
+
+
+            data.fronts.forEach(front => {
+              // Project and parse coordinates for each front
+              this.fireParts[front.date] = parseCoordinates(front.coordinates, this.data2D.BBox, this.origin, this.extents);
+            });
+        
+            let maxDate = new Date(0); // Initialize with the earliest possible date
+            let minDate = new Date(); // Initialize with the current date
+            Object.keys(this.fireParts).forEach(dateStr => {
+              const date = new Date(dateStr);
+                
+              if (date > maxDate) {
+                maxDate = date; // Update maxDate if the current date is later
+              }
+              if (date < minDate) {
+                      minDate = date; // Update minDate if the current date is earlier
+                }
+            });
+
+            // Once the maximum date is found, convert it to milliseconds and assign to this.simMaxTime
+            this.simMaxTime = maxDate.getTime();
+            this.simMinTime = minDate.getTime();
+        
+            console.log("loaded until ",maxDate);
+        //    this.loadFirePartsIntoInjected();
+            // Assuming the structure is {"text": "hurray"}
+             // Logs the content of the text variable
+        })
+        .catch(error => {
+            console.error('There has been a problem with your fetch operation:', error);
+        });
+    },
+    
     injectParticleXY: function(intersectionPoint) { 
+   
        //  console.log("Intersection point:", intersectionPoint, this.origin, this.extents);
-        if (!this.shootOK){
-            return;
-        }
-        if (this.injectCount >= this.number_of_inject){
-            this.injectCount = 0;
-            //return;
-        }
+        
         var NX = intersectionPoint.x  ;
         var NY = intersectionPoint.z ;
         if (NX < this.origin.x || NX > this.origin.x + this.extents.width ||
                 NY < this.origin.y || NY > this.origin.y + this.extents.height) {
              return;
-        }       
+        }   
         
-        rloc = interpolateAt(this.data2D, NX, NY,this.timeIndex1,this.timeIndex2,this.rIndices);  
-        this.injected[this.injectCount*4] = NX;
-        this.injected[this.injectCount*4 + 2] = NY;
-        this.injected[this.injectCount*4 + 1] = rloc.z;
-        this.injected[this.injectCount*4 + 3] = 1;
-                 
-        console.log("Injection at :", intersectionPoint, this.injected[this.injectCount*4], this.injected[this.injectCount*4 + 2]);
-      
-        this.injectCount += 1;
-        this.shootOK = true;
+        if (this.interactionMode == LAGRANGIAN || this.interactionMode === RAIN){
+            if (!this.shootOK){
+                return;
+            }
+            if (this.injectCount >= this.number_of_inject){
+                this.injectCount = 0;
+                //return;
+            }
+          
+
+            rloc = interpolateAt(this.data2D, NX, NY,this.timeIndex1,this.timeIndex2,this.rIndices);  
+            this.injected[this.injectCount*4] = NX;
+            this.injected[this.injectCount*4 + 2] = NY;
+            this.injected[this.injectCount*4 + 1] = rloc.z;
+            this.injected[this.injectCount*4 + 3] = 1;
+
+         //   console.log("Injection at :", this.injected[this.injectCount*4], this.injected[this.injectCount*4 + 2]);
+
+            this.injectCount += 1;
+            this.shootOK = true;
+        
+        }
+        if (this.interactionMode == FIRECASTER){
+            if(this.interactionPossible == false){
+                    return;
+            } 
+            this.interactionPossible = false;
+            
+            
+            
+            if(this.fcastPath == 0){
+                
+                
+                    const currentDate = new Date();
+    
+                    const pathDate = formatDateForPath(currentDate);
+                    const isoDate = formatDateForDateParam(new Date(this.current_time));
+
+                    // Assuming transformPointToLatLon returns { lat, lon } and coords is already in the correct format
+                    // If coords needs to be dynamically calculated, call transformPointToLatLon here and encode the result
+                    const {lat, lon} =  transformPointToLatLon(NX, NY, this.data2D.BBox, this.origin, this.extents) ;
+                    const encodedStringCoordinates = encodeCoordinate(lat, lon);
+                    const params = {
+                        command: 'init',
+                        path: pathDate,
+                        message: 'CEMER',
+                        coords: encodedStringCoordinates, // Assuming coords is already provided or calculated elsewhere
+                        ventX: 20,
+                        ventY: 20,
+                        date: isoDate,
+                        model: 'Rothermel',
+                        apikey: 'null'
+                    };
+                    const queryString = Object.keys(params)
+                    .map(key => encodeURIComponent(key) + '=' + encodeURIComponent(params[key]))
+                    .join('&');
+                
+                
+                  fetch(firecasterAPI+queryString) // Make sure the path to hurray.json is correct
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok.');
+                        }
+                        return response.json(); // Use .json() for JSON data
+                    }).then(data => {
+                      
+                  });
+                             
+                
+                
+                
+                this.fcastPath = pathDate;
+                
+                console.log(queryString);
+            }else{
+                const isoDate = formatDateForDateParam(new Date(this.current_time));
+                const {lat, lon} =  transformPointToLatLon(NX, NY, this.data2D.BBox, this.origin, this.extents) ;
+                const encodedStringCoordinates = encodeCoordinate(lat, lon);
+                const actionParams = {
+                    command: 'action',
+                    path: this.fcastPath, // Assuming this is the desired static value or calculated elsewhere
+                    date: isoDate, // Assuming isoDate or similarly calculated
+                    domain: 'WORLD',
+                    action: 'addIgnition',
+                    coords: encodedStringCoordinates, // Assuming coords is already provided or calculated elsewhere
+                    apikey: 'null'
+                };
+                const queryString = Object.keys(actionParams)
+                .map(key => encodeURIComponent(key) + '=' + encodeURIComponent(actionParams[key]))
+                .join('&');
+             
+                console.log("added ignition ",firecasterAPI+queryString);
+                fetch(firecasterAPI+queryString) // Make sure the path to hurray.json is correct
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok.');
+                        }
+                        return response.json(); // Use .json() for JSON data
+                    }).then(data => {
+                         
+                  });
+                
+                
+            }
+            // si il n'y a aps de simpath :
+              // on initialise
+              // on stoppe le temps
+              // on lance la boucle d'autoload
+            // si il y a djà un simpath
+                // on fout un autre feu
+        }
     },
     injectParticleLatLon: function(lat,lon) { 
     },
@@ -722,15 +1092,36 @@ AFRAME.registerComponent('flow-tracer', {
             }
             this.currentAdvDuration = 0;
             
+            this.currentSimUpdateDuration += +timeDelta;
+            if (this.currentSimUpdateDuration > this.simRefreshDelta){
+                
+                this.currentSimUpdateDuration = 0;
+                this.interactionPossible = true;
+                
+                if (this.fcastPath != 0){
+                    this.loadFireAsync();    
+                
+                    if (this.current_time > this.simMaxTime){
+                       fetch(firecasterAPI+"command=step&path="+this.fcastPath) // Make sure the path to hurray.json is correct
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok.');
+                            }
+                            return response.json(); // Use .json() for JSON data
+                        }).then(data => {
+
+                      });
+
+                    }
+                }
+            }
+            
+            
             this.shootOK = true;
-            
-            
+           //
             this.tickTimeDelta = timeDelta;
             this.tickTime = time;
             this.time_step_ms = this.sim_speedup*this.cMaxAps;
-            
-        
-            
             
             this.current_time = +this.current_time+ +this.time_step_ms;
             if(this.current_time > this.end_time){
@@ -740,7 +1131,8 @@ AFRAME.registerComponent('flow-tracer', {
                 this.current_time = +this.end_time- 1.0;
             }
             var rTime = (this.current_time - this.initial_time) / this.timeIndices_delta;
-            
+            var rsimmaxTime = (this.simMaxTime - this.initial_time) / this.timeIndices_delta;
+            var rsimminTime = (this.simMinTime - this.initial_time) / this.timeIndices_delta;
             // Calculate timeIndex1 and timeIndex2
             this.timeIndex1 = +this.initial_time + Math.floor(rTime) * this.timeIndices_delta;
             this.timeIndex2 = +this.timeIndex1 + +this.timeIndices_delta;
@@ -752,13 +1144,12 @@ AFRAME.registerComponent('flow-tracer', {
             if (this.text_tracker != null){
                 
                 this.text_tracker.set_progress(rTime/this.timeIndices.length);
+                this.text_tracker.set_simmaxtime(rsimmaxTime/this.timeIndices.length);
+                this.text_tracker.set_simmintime(rsimminTime/this.timeIndices.length);
                 this.update_info(this.getSimulationInfo());
             } 
             
             
-
-            
-            //for (var itrail = 0; itrail < this.trail_length; itrail += 1) 
             
             this.trail_index = this.trail_index+1;
             if(this.trail_index >=this.trail_length){
@@ -766,8 +1157,11 @@ AFRAME.registerComponent('flow-tracer', {
             }
 
             
-            
-             for (var i = 0; i < this.number_of_inject * 4; i += 4) {
+            if (this.interactionMode == FIRECASTER){
+                 this.loadFirePartsIntoInjected();  
+            }
+            if (this.interactionMode == LAGRANGIAN){
+               for (var i = 0; i < this.number_of_inject * 4; i += 4) {
                 rloc = interpolateAt(this.data2D, this.injected[i], this.injected[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
                 var NX = this.injected[i] + (rloc.u * +this.time_step_ms/1000.0 )/this.resolution;
                 this.injected[i + 1] = rloc.z;
@@ -786,10 +1180,31 @@ AFRAME.registerComponent('flow-tracer', {
                  }
                  
                 }
-            
+            }
+
+            if (this.interactionMode == RAIN){
+               for (var i = 0; i < this.number_of_inject * 4; i += 4) {
+                rloc = interpolateRunoffAt(this.data2D, this.injected[i], this.injected[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);  
+                var NX = this.injected[i] + (rloc.u * +this.time_step_ms/1000.0 )/this.resolution;
+                this.injected[i + 1] = rloc.z;
+                var NY = this.injected[i + 2] + (rloc.v * +this.time_step_ms/1000.0 )/this.resolution;
+                this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
+                
+                if (this.injected[i] < this.origin.x || this.injected[i] > this.origin.x + this.extents.width ||
+                        this.injected[i + 2] < this.origin.y || this.injected[i + 2] > this.origin.y + this.extents.height) {
+                   //     this.injected[i] = this.origin.x + Math.random() * this.extents.width;
+                        this.injected[i + 3] = 2;
+                 }else{
+                     if (this.positions[i + 3]>0){
+                        this.injected[i] = NX;
+                        this.injected[i + 2] = NY;
+                     }
+                 }
+                 
+                }
+            }
             
             var viewSpeedCoeff =  (this.cMaxAps* this.flowTracerSpeed )/this.resolution;
-            
             
             for (var i = 0; i < this.number_of_particles * 4; i += 4) {
                
@@ -797,21 +1212,15 @@ AFRAME.registerComponent('flow-tracer', {
                 let new_v = 0 ;
                 let new_u = 0;
                 
-                if(this.positions[i+3]>0){   
-                    let scaled_magnitude = Math.pow(this.positions[i+3], 0.3); // 'a' is the power factor, less than 1
-                    new_u =  rloc.u * scaled_magnitude / this.positions[i+3] ;
-                    new_v =  rloc.v * scaled_magnitude / this.positions[i+3] ;
-                }
+              //  if(this.positions[i+3]>0){   
+                    let scaled_magnitude = Math.pow(this.positions[i+3], 1); // 'a' is the power factor, less than 1
+                 
+                    new_u =  rloc.u ;//* scaled_magnitude / this.positions[i+3] ;
+                    new_v =  rloc.v ;//* scaled_magnitude / this.positions[i+3] ;
+               // }
                 this.positions[i] += new_u * viewSpeedCoeff;
                 this.positions[i + 2] += new_v * viewSpeedCoeff;
-                //this.positions[i] += rloc.u * viewSpeedCoeff;
-                //this.positions[i + 2] += rloc.v * viewSpeedCoeff;
 
-
-                /*if (this.trail_index == 0 ) {
-                    this.positions[i] = origin.x + Math.random() * extents.width;
-                    this.positions[i + 2] = origin.y + Math.random() * extents.height;
-                }*/
                 if (this.positions[i] < this.origin.x || this.positions[i] > this.origin.x + this.extents.width ||
                         this.positions[i + 2] < this.origin.y || this.positions[i + 2] > this.origin.y + this.extents.height) {
                         // Reset position within the bounds
@@ -820,16 +1229,10 @@ AFRAME.registerComponent('flow-tracer', {
                  }
 
 
-                rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
+             //demColumns   rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
                 this.positions[i + 1] = rloc.z; 
                 this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
-            /*    while (this.positions[i + 3] < Math.random()*(this.maxOverallSpeed/3) ) {
-                    this.positions[i] = this.origin.x + Math.random() * this.extents.width;
-                    this.positions[i + 2] = this.origin.y + Math.random() * this.extents.height;
-                    rloc = interpolateAt(this.data2D, this.positions[i], this.positions[i+2],this.timeIndex1,this.timeIndex2,this.rIndices);
-                    this.positions[i + 1] = rloc.z;
-                    this.positions[i + 3] = Math.sqrt(rloc.v*rloc.v + rloc.u*rloc.u);
-                }*/
+
             
             }
 
